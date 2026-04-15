@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx tsc:*)",
+      "Bash(awk '{print $1, $2, $11, $12}')",
+      "Bash(node -e ':*)"
+    ]
+  }
+}
