@@ -6,6 +6,7 @@ import NavBar from '@/components/NavBar'
 import HabitCard from '@/components/HabitCard'
 import type { DayStatus } from '@/lib/streak'
 import { calculateStreak, getLast7Days } from '@/lib/streak'
+import { supabase } from '@/lib/supabase'
 
 type Habit = {
   id: string
@@ -45,6 +46,7 @@ function getGreeting(): string {
 
 export default function DashboardPage() {
   const router = useRouter()
+  const [userId, setUserId] = useState<string | null>(null)
   const [habit, setHabit] = useState<Habit | null>(null)
   const [logs, setLogs] = useState<Log[]>([])
   const [todayLogged, setTodayLogged] = useState(false)
@@ -55,12 +57,22 @@ export default function DashboardPage() {
   const [totalLogs, setTotalLogs] = useState(0)
 
   useEffect(() => {
-    // Load onboarding data
-    const stored = localStorage.getItem('habidy_onboarding')
-    if (stored) {
-      const data = JSON.parse(stored)
-      setIdentityStatement(data.identity_statement ?? '')
-    }
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (user) setUserId(user.id)
+    })
+  }, [])
+
+  useEffect(() => {
+    // Load identity from Supabase session
+    supabase.auth.getUser().then(async ({ data: { user } }) => {
+      if (!user) return
+      const { data: row } = await supabase
+        .from('users')
+        .select('identity_statement')
+        .eq('id', user.id)
+        .maybeSingle()
+      if (row?.identity_statement) setIdentityStatement(row.identity_statement)
+    })
 
     // Load habit — try saved habit, fall back to mock
     const savedHabit = localStorage.getItem('habidy_active_habit')
@@ -106,7 +118,7 @@ export default function DashboardPage() {
       await fetch(`/api/habits/${habit.id}/log`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ user_id: 'mock-user-id', completed, date: today }),
+        body: JSON.stringify({ user_id: userId, completed, date: today }),
       })
     } catch {
       // Offline — local state is fine
@@ -190,7 +202,7 @@ export default function DashboardPage() {
           >
             <span className="text-xl">✦</span>
             <span className="text-sm font-medium text-zinc-900">Reflect</span>
-            <span className="text-xs text-zinc-500">Chat with Constellation</span>
+            <span className="text-xs text-zinc-500">Chat with Insights agent</span>
           </button>
           <button
             onClick={() => router.push('/architect')}

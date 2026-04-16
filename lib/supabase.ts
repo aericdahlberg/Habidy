@@ -1,9 +1,15 @@
-import { createClient } from '@supabase/supabase-js'
+import { createBrowserClient } from '@supabase/ssr'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? 'https://placeholder.supabase.co'
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? 'placeholder-anon-key'
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey)
+// createBrowserClient (from @supabase/ssr) is required for the new sb_publishable_ key format.
+// The legacy createClient from @supabase/supabase-js fell back to sending the raw key as
+// Authorization: Bearer — which works with the old eyJ JWT anon keys (they are valid JWTs)
+// but is explicitly rejected by Supabase when using the new non-JWT publishable key format.
+// createBrowserClient uses PKCE flow + cookie-based session storage, ensuring the real user
+// JWT is always used for Authorization headers and the raw key is never sent as a Bearer token.
+export const supabase = createBrowserClient(supabaseUrl, supabaseAnonKey)
 
 export type Database = {
   users: {

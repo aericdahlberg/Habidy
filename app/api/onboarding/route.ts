@@ -38,6 +38,7 @@ export async function POST(req: NextRequest) {
           friction_point,
           time_available,
           onboarding_done: true,
+          new_user: true,
         })
         .select()
         .single()

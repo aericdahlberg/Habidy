@@ -1,17 +1,25 @@
 "use client"
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import NavBar from '@/components/NavBar'
 import ChatInterface from '@/components/ChatInterface'
+import { supabase } from '@/lib/supabase'
 
 type HabitData = Record<string, string>
 
 export default function ArchitectPage() {
   const router = useRouter()
+  const [userId, setUserId] = useState<string | undefined>(undefined)
   const [habitData, setHabitData] = useState<HabitData | null>(null)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
+
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (user) setUserId(user.id)
+    })
+  }, [])
 
   async function handleHabitReady(data: HabitData) {
     setHabitData(data)
@@ -29,7 +37,7 @@ export default function ArchitectPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          user_id: 'mock-user-id',
+          user_id: userId,
           goal_category: onboarding.goal_category ?? null,
           ...habitData,
         }),
@@ -78,6 +86,7 @@ export default function ArchitectPage() {
       <div className="mx-auto flex w-full max-w-sm flex-1 flex-col overflow-hidden">
         <ChatInterface
           agentEndpoint="/api/agents/architect"
+          userId={userId}
           onHabitReady={handleHabitReady}
           initialMessage="Let's build a habit together. First — who do you want to be? Not what you want to do, but the identity behind it."
         />
