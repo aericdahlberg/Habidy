@@ -19,23 +19,13 @@ type Habit = {
 
 type Log = { date: string; completed: boolean }
 
-const MOCK_HABIT: Habit = {
-  id: 'mock-habit-1',
-  name: 'Run for 2 minutes',
-  identity_link: 'I am someone who takes care of their body',
-  cue: 'After I make coffee',
-  time_of_day: 'Morning',
-  goal_category: 'Health & Fitness',
+type HabitState = {
+  logs: Log[]
+  streak: number
+  last7: DayStatus[]
+  todayLogged: boolean
+  todayCompleted: boolean | null
 }
-
-const MOCK_LOGS: Log[] = (() => {
-  const today = new Date()
-  return [4, 3, 2, 1, 0].map((offset) => {
-    const d = new Date(today)
-    d.setDate(d.getDate() - offset)
-    return { date: d.toISOString().split('T')[0], completed: offset !== 3 }
-  })
-})()
 
 function getGreeting(): string {
   const h = new Date().getHours()
@@ -44,78 +34,110 @@ function getGreeting(): string {
   return 'Good evening'
 }
 
+function buildHabitState(logs: Log[]): HabitState {
+  const today = new Date().toISOString().split('T')[0]
+  const todayLog = logs.find((l) => l.date === today)
+  return {
+    logs,
+    streak: calculateStreak(logs),
+    last7: getLast7Days(logs),
+    todayLogged: !!todayLog,
+    todayCompleted: todayLog?.completed ?? null,
+  }
+}
+
 export default function DashboardPage() {
   const router = useRouter()
   const [userId, setUserId] = useState<string | null>(null)
-  const [habit, setHabit] = useState<Habit | null>(null)
-  const [logs, setLogs] = useState<Log[]>([])
-  const [todayLogged, setTodayLogged] = useState(false)
-  const [todayCompleted, setTodayCompleted] = useState<boolean | null>(null)
-  const [last7, setLast7] = useState<DayStatus[]>([])
-  const [streak, setStreak] = useState(0)
+  const [habits, setHabits] = useState<Habit[]>([])
+  const [habitStates, setHabitStates] = useState<Record<string, HabitState>>({})
   const [identityStatement, setIdentityStatement] = useState('')
-  const [totalLogs, setTotalLogs] = useState(0)
+  const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      if (user) setUserId(user.id)
-    })
-  }, [])
-
-  useEffect(() => {
-    // Load identity from Supabase session
-    supabase.auth.getUser().then(async ({ data: { user } }) => {
+    async function load() {
+      const { data: { user } } = await supabase.auth.getUser()
       if (!user) return
-      const { data: row } = await supabase
+
+      setUserId(user.id)
+
+      // Load identity statement
+      const { data: userRow } = await supabase
         .from('users')
         .select('identity_statement')
         .eq('id', user.id)
         .maybeSingle()
-      if (row?.identity_statement) setIdentityStatement(row.identity_statement)
-    })
+      if (userRow?.identity_statement) setIdentityStatement(userRow.identity_statement)
 
-    // Load habit — try saved habit, fall back to mock
-    const savedHabit = localStorage.getItem('habidy_active_habit')
-    const activeHabit: Habit = savedHabit ? JSON.parse(savedHabit) : MOCK_HABIT
-    setHabit(activeHabit)
+      // Load active habits
+      const habitsRes = await fetch(`/api/habits?user_id=${user.id}`)
+      const habitsJson = await habitsRes.json() as { habits?: Habit[] }
+      const activeHabits: Habit[] = habitsJson.habits ?? []
 
-    // Load logs — try localStorage, fall back to mock
-    const savedLogs = localStorage.getItem(`habidy_logs_${activeHabit.id}`)
-    const activeLogs: Log[] = savedLogs ? JSON.parse(savedLogs) : MOCK_LOGS
-    setLogs(activeLogs)
-    setTotalLogs(activeLogs.filter((l) => l.completed).length)
+      if (activeHabits.length === 0) {
+        // Fall back to localStorage for offline / pre-save state
+        const saved = localStorage.getItem('habidy_active_habit')
+        if (saved) {
+          const h: Habit = JSON.parse(saved)
+          setHabits([h])
+          const savedLogs = localStorage.getItem(`habidy_logs_${h.id}`)
+          const logs: Log[] = savedLogs ? JSON.parse(savedLogs) : []
+          setHabitStates({ [h.id]: buildHabitState(logs) })
+        }
+        setLoading(false)
+        return
+      }
 
-    // Check today
-    const today = new Date().toISOString().split('T')[0]
-    const todayLog = activeLogs.find((l) => l.date === today)
-    setTodayLogged(!!todayLog)
-    setTodayCompleted(todayLog?.completed ?? null)
+      setHabits(activeHabits)
 
-    // Streak
-    setStreak(calculateStreak(activeLogs))
-    setLast7(getLast7Days(activeLogs))
+      // Load last 60 days of logs for all habits in one query
+      const habitIds = activeHabits.map((h) => h.id)
+      const since = new Date()
+      since.setDate(since.getDate() - 60)
+      const sinceStr = since.toISOString().split('T')[0]
+
+      const { data: allLogs } = await supabase
+        .from('habit_logs')
+        .select('habit_id, date, completed')
+        .in('habit_id', habitIds)
+        .gte('date', sinceStr)
+        .order('date', { ascending: false })
+
+      const byHabit: Record<string, Log[]> = {}
+      for (const log of allLogs ?? []) {
+        if (!byHabit[log.habit_id]) byHabit[log.habit_id] = []
+        byHabit[log.habit_id].push({ date: log.date, completed: log.completed })
+      }
+
+      const states: Record<string, HabitState> = {}
+      for (const h of activeHabits) {
+        states[h.id] = buildHabitState(byHabit[h.id] ?? [])
+      }
+      setHabitStates(states)
+      setLoading(false)
+    }
+
+    load()
   }, [])
 
-  async function handleLog(completed: boolean) {
-    if (!habit) return
+  async function handleLog(habitId: string, completed: boolean) {
+    if (!userId) return
     const today = new Date().toISOString().split('T')[0]
 
-    // Optimistic update
-    const updatedLogs = logs.filter((l) => l.date !== today)
-    updatedLogs.push({ date: today, completed })
-    setLogs(updatedLogs)
-    setTodayLogged(true)
-    setTodayCompleted(completed)
-    setStreak(calculateStreak(updatedLogs))
-    setLast7(getLast7Days(updatedLogs))
-    if (completed) setTotalLogs((n) => n + 1)
+    setHabitStates((prev) => {
+      const current = prev[habitId] ?? { logs: [], streak: 0, last7: [], todayLogged: false, todayCompleted: null }
+      const updatedLogs = current.logs.filter((l) => l.date !== today)
+      updatedLogs.push({ date: today, completed })
+      return { ...prev, [habitId]: buildHabitState(updatedLogs) }
+    })
 
     // Persist locally
-    localStorage.setItem(`habidy_logs_${habit.id}`, JSON.stringify(updatedLogs))
+    localStorage.setItem(`habidy_logs_${habitId}`, JSON.stringify(
+      (habitStates[habitId]?.logs ?? []).filter((l) => l.date !== today).concat({ date: today, completed })
+    ))
 
-    // Try API
     try {
-      await fetch(`/api/habits/${habit.id}/log`, {
+      await fetch(`/api/habits/${habitId}/log`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ user_id: userId, completed, date: today }),
@@ -125,19 +147,19 @@ export default function DashboardPage() {
     }
   }
 
-  const showAddHabit = totalLogs >= 7
+  // Show "+ Add habit" if any habit has a 7-day streak
+  const showAddHabit = Object.values(habitStates).some((s) => s.streak >= 7)
 
   return (
     <div className="flex min-h-screen flex-col bg-zinc-50 pb-24">
       {/* Header */}
       <div className="bg-white px-5 pt-12 pb-6">
         <div className="mx-auto max-w-sm">
-          <h1 className="text-2xl font-semibold text-zinc-900">
-            {getGreeting()}
-          </h1>
+          <h1 className="text-2xl font-semibold text-zinc-900">{getGreeting()}</h1>
           {identityStatement && (
             <p className="mt-1 text-sm text-zinc-500 leading-relaxed">
-              You&apos;re becoming someone who {identityStatement.replace(/^i want to be someone who\s*/i, '')}
+              You&apos;re becoming someone who{' '}
+              {identityStatement.replace(/^i want to be someone who\s*/i, '')}
             </p>
           )}
         </div>
@@ -146,31 +168,30 @@ export default function DashboardPage() {
       {/* Content */}
       <div className="mx-auto w-full max-w-sm flex-1 px-4 pt-4 space-y-4">
 
-        {/* Streak milestone celebrations */}
-        {streak === 7 && (
+        {/* Streak milestone celebrations — check all habits */}
+        {Object.values(habitStates).some((s) => s.streak === 7) && (
           <div className="rounded-2xl bg-amber-50 border border-amber-100 px-5 py-4 text-center">
             <p className="text-xl">🎉</p>
-            <p className="mt-1 text-sm font-medium text-amber-900">7-day streak! You&apos;re building something real.</p>
+            <p className="mt-1 text-sm font-medium text-amber-900">
+              7-day streak! You&apos;re building something real.
+            </p>
           </div>
         )}
-        {streak === 30 && (
+        {Object.values(habitStates).some((s) => s.streak === 30) && (
           <div className="rounded-2xl bg-amber-50 border border-amber-200 px-5 py-4 text-center">
             <p className="text-2xl">🏆</p>
-            <p className="mt-1 text-sm font-medium text-amber-900">30 days. Time to level up this habit?</p>
+            <p className="mt-1 text-sm font-medium text-amber-900">
+              30 days. Time to level up this habit?
+            </p>
           </div>
         )}
 
-        {/* Habit card */}
-        {habit ? (
-          <HabitCard
-            habit={habit}
-            streak={streak}
-            last7={last7}
-            todayLogged={todayLogged}
-            todayCompleted={todayCompleted}
-            onLog={handleLog}
-          />
-        ) : (
+        {/* Habit cards */}
+        {loading ? (
+          <div className="rounded-3xl border border-zinc-100 bg-white px-6 py-10 text-center">
+            <p className="text-sm text-zinc-400">Loading your habits...</p>
+          </div>
+        ) : habits.length === 0 ? (
           <div className="rounded-3xl border border-zinc-200 bg-white px-6 py-10 text-center">
             <p className="text-3xl">🌱</p>
             <p className="mt-3 text-base font-medium text-zinc-900">No habit yet</p>
@@ -182,12 +203,30 @@ export default function DashboardPage() {
               Build a habit →
             </button>
           </div>
+        ) : (
+          habits.map((habit) => {
+            const state = habitStates[habit.id] ?? {
+              logs: [], streak: 0, last7: getLast7Days([]), todayLogged: false, todayCompleted: null,
+            }
+            return (
+              <HabitCard
+                key={habit.id}
+                habit={habit}
+                streak={state.streak}
+                last7={state.last7}
+                todayLogged={state.todayLogged}
+                todayCompleted={state.todayCompleted}
+                userId={userId}
+                onLog={(completed) => handleLog(habit.id, completed)}
+              />
+            )
+          })
         )}
 
-        {/* Add another habit (only after 7 logs) */}
+        {/* Add another habit — shown after 7-day streak */}
         {showAddHabit && (
           <button
-            onClick={() => router.push('/architect')}
+            onClick={() => router.push('/add-habit')}
             className="flex w-full items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-zinc-200 py-4 text-sm font-medium text-zinc-500 transition-colors hover:border-zinc-400 hover:text-zinc-700"
           >
             + Add another habit
@@ -202,7 +241,7 @@ export default function DashboardPage() {
           >
             <span className="text-xl">✦</span>
             <span className="text-sm font-medium text-zinc-900">Reflect</span>
-            <span className="text-xs text-zinc-500">Chat with Insights agent</span>
+            <span className="text-xs text-zinc-500">Chat with Crystal Ball</span>
           </button>
           <button
             onClick={() => router.push('/architect')}

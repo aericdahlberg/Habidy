@@ -1,19 +1,26 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { callClaude, Message } from '@/lib/claude'
 import { agentGuard } from '@/lib/agentGuard'
-import { buildArchitectSystemPrompt, extractHabitFromMessage } from '@/lib/agents/architect'
-import { supabase } from '@/lib/supabase'
+import { buildArchitectSystemPrompt, extractHabitsFromMessage } from '@/lib/agents/architect'
+import { supabase, getProfileContext } from '@/lib/supabase'
+import { createClient } from '@supabase/supabase-js'
 
 const MAX_TURNS = 20
-const WRAP_UP_AT = 3  // inject wrap-up hint when this many turns remain
+const WRAP_UP_AT = 3
 
 const MOCK_USER = {
   id: 'mock-user-id',
   name: 'Friend',
   identity_statement: 'someone who takes care of themselves',
   goal_category: 'Health & Fitness',
-  friction_point: 'I stay up too late scrolling',
   time_available: '15 minutes',
+}
+
+function adminClient() {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+  )
 }
 
 export async function POST(req: NextRequest) {
@@ -28,20 +35,19 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'messages required' }, { status: 400 })
     }
 
-    // Count only user messages — each is one turn
     const turnsUsed = messages.filter((m) => m.role === 'user').length
     const turnsRemaining = MAX_TURNS - turnsUsed
 
     if (turnsUsed >= MAX_TURNS) {
       return NextResponse.json({
-        message: "We've built something solid here. Even without a complete cue, you have everything you need to start. Let's save what we have and you can refine it as you go.",
+        message: "We've covered a lot of ground. Even without a perfect cue, you have everything you need to start. Let's save what we have.",
         limitReached: true,
         turnsUsed,
         turnsRemaining: 0,
       })
     }
 
-    // Load user context
+    // ── Load user context ─────────────────────────────────────────────────────
     let userCtx = MOCK_USER
     if (userId) {
       try {
@@ -63,46 +69,57 @@ export async function POST(req: NextRequest) {
             name: (result.data.name as string) ?? 'Friend',
             identity_statement: (result.data.identity_statement as string) ?? '',
             goal_category: (result.data.goal_category as string) ?? '',
-            friction_point: (result.data.friction_point as string) ?? '',
             time_available: (result.data.time_available as string) ?? '',
           }
         }
       } catch {
-        // Fall back to mock context if DB unavailable
+        // Fall back to mock context
       }
     }
 
-    // Load Constellation summary
-    let constellationSummary = ''
+    // ── Load Crystal Ball session summary ─────────────────────────────────────
+    let crystalBallSummary = ''
     if (userId) {
       try {
         const { data } = await supabase
           .from('conversation_memory')
           .select('summary')
           .eq('user_id', userId)
-          .eq('agent', 'constellation')
+          .eq('agent', 'crystal-ball')
           .order('created_at', { ascending: false })
           .limit(1)
           .single()
-        constellationSummary = (data?.summary as string) ?? ''
+        crystalBallSummary = (data?.summary as string) ?? ''
       } catch {
-        // No summary — continue without it (per guard rules)
+        // No Crystal Ball summary yet — continue without it
       }
     }
 
+    // ── Load profile context ──────────────────────────────────────────────────
+    let profileContext: string | null = null
+    if (userId) {
+      try {
+        profileContext = await getProfileContext(userId)
+      } catch {
+        // Non-fatal
+      }
+    }
+
+    // ── Build system prompt ───────────────────────────────────────────────────
     let systemPrompt = buildArchitectSystemPrompt({
       userName: userCtx.name,
       identityStatement: userCtx.identity_statement,
       goalCategory: userCtx.goal_category,
       timeAvailable: userCtx.time_available,
-      constellationSummary,
+      crystalBallSummary,
+      profileContext,
     })
 
-    // Inject wrap-up hint when turns are running low
     if (turnsRemaining <= WRAP_UP_AT) {
-      systemPrompt += `\n\n[SYSTEM: You have ${turnsRemaining} exchange${turnsRemaining === 1 ? '' : 's'} remaining. Move to close the loop now — summarize the habit and output HABIT_READY even if the cue isn't fully refined. Don't leave the user with nothing.]`
+      systemPrompt += `\n\n[SYSTEM: ${turnsRemaining} exchange${turnsRemaining === 1 ? '' : 's'} remaining. You must write your closing line and output the HABITS_READY JSON array now — even if you have to extrapolate. Do not leave the user with nothing.]`
     }
 
+    // ── Call Claude ────────────────────────────────────────────────────────────
     const reply = await agentGuard({
       agentName: 'architect',
       toolName: 'chat',
@@ -111,14 +128,40 @@ export async function POST(req: NextRequest) {
       fn: () => callClaude({ systemPrompt, messages }),
     })
 
-    // Check if habit is ready to save
-    const habitData = extractHabitFromMessage(reply)
-    const cleanReply = reply.replace(/HABIT_READY:\{[\s\S]+\}/, '').trim()
+    // ── Detect HABITS_READY ───────────────────────────────────────────────────
+    const habits = extractHabitsFromMessage(reply)
+    if (habits) {
+      const cleanReply = reply.replace(/HABITS_READY:[\s\S]+$/, '').trim()
+
+      // Save all habits to proposed_habits (best-effort)
+      let proposedIds: string[] = []
+      if (userId) {
+        try {
+          const rows = habits.map((h) => ({
+            user_id: userId,
+            habit_data: h,
+            selected: false,
+          }))
+          const { data: inserted } = await adminClient()
+            .from('proposed_habits')
+            .insert(rows)
+            .select('id')
+          proposedIds = (inserted ?? []).map((r: { id: string }) => r.id)
+        } catch {
+          // Non-fatal — IDs just won't be available for later marking
+        }
+      }
+
+      return NextResponse.json({
+        message: cleanReply,
+        habitsReady: habits.map((h, i) => ({ ...h, proposedId: proposedIds[i] ?? null })),
+        turnsUsed,
+        turnsRemaining,
+      })
+    }
 
     return NextResponse.json({
-      message: cleanReply,
-      habitReady: habitData ? true : false,
-      habitData: habitData ?? null,
+      message: reply,
       turnsUsed,
       turnsRemaining,
     })

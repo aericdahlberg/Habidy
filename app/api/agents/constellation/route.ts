@@ -1,28 +1,26 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { callClaude, Message } from '@/lib/claude'
 import { agentGuard } from '@/lib/agentGuard'
-import { buildConstellationSystemPrompt, buildSummaryPrompt } from '@/lib/agents/constellation'
-import { supabase } from '@/lib/supabase'
+import { buildCrystalBallSystemPrompt, buildForcedSummaryPrompt } from '@/lib/agents/constellation'
+import { supabase, getProfileContext } from '@/lib/supabase'
 
-const MAX_TURNS = 20
-const WRAP_UP_AT = 3  // inject wrap-up hint when this many turns remain
+const MAX_TURNS = 10
+const WRAP_UP_AT = 2  // inject wrap-up hint when this many user turns remain
+
+const SUMMARY_MARKER = 'CRYSTAL_BALL_SUMMARY:'
 
 const MOCK_USER = {
   id: 'mock-user-id',
   name: 'Friend',
   identity_statement: 'someone who takes care of themselves',
-  goal_category: 'Health & Fitness',
-  friction_point: 'I stay up too late scrolling',
-  time_available: '15 minutes',
 }
 
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
-    const { messages, userId, generateSummary } = body as {
+    const { messages, userId } = body as {
       messages: Message[]
       userId?: string
-      generateSummary?: boolean
     }
 
     if (!messages) {
@@ -33,22 +31,63 @@ export async function POST(req: NextRequest) {
     const turnsUsed = messages.filter((m) => m.role === 'user').length
     const turnsRemaining = MAX_TURNS - turnsUsed
 
+    // ── Limit reached: force-generate summary from conversation ──────────────
     if (turnsUsed >= MAX_TURNS) {
+      let summaryJson: string | null = null
+
+      if (userId) {
+        try {
+          const { data: userRow } = await supabase
+            .from('users')
+            .select('name, identity_statement')
+            .eq('id', userId)
+            .single()
+
+          const forcedSummary = await agentGuard({
+            agentName: 'crystal-ball',
+            toolName: 'forcedSummary',
+            input: { userId, messageCount: messages.length },
+            userId,
+            fn: () =>
+              callClaude({
+                systemPrompt: buildForcedSummaryPrompt({
+                  userName: (userRow?.name as string) ?? 'Friend',
+                  identityStatement: (userRow?.identity_statement as string) ?? '',
+                  conversation: messages,
+                }),
+                messages: [{ role: 'user', content: 'Generate the summary now.' }],
+                maxTokens: 512,
+              }),
+          })
+
+          summaryJson = forcedSummary
+
+          await supabase.from('conversation_memory').insert({
+            user_id: userId,
+            agent: 'crystal-ball',
+            summary: summaryJson,
+          })
+        } catch {
+          // Non-fatal — still show handoff
+        }
+      }
+
       return NextResponse.json({
-        message: "We've covered a lot of ground together. This is a good place to pause — want to take what you've explored and turn it into a real habit?",
+        message: "We've covered a lot of ground. I have what I need — let's hand this to Architect.",
         limitReached: true,
+        showHandoff: true,
         turnsUsed,
         turnsRemaining: 0,
       })
     }
 
-    // Load user context
+    // ── Load user context ─────────────────────────────────────────────────────
     let userCtx = MOCK_USER
     if (userId) {
       try {
         type UserResult = { data: Record<string, unknown> | null; error: unknown }
         const result = await agentGuard<UserResult>({
-          agentName: 'constellation',
+          agentName: 'crystal-ball',
           toolName: 'getUser',
           input: { userId },
           userId,
@@ -63,74 +102,83 @@ export async function POST(req: NextRequest) {
             id: result.data.id as string,
             name: (result.data.name as string) ?? 'Friend',
             identity_statement: (result.data.identity_statement as string) ?? '',
-            goal_category: (result.data.goal_category as string) ?? '',
-            friction_point: (result.data.friction_point as string) ?? '',
-            time_available: (result.data.time_available as string) ?? '',
           }
         }
       } catch {
-        // Fall back to mock context if DB unavailable
+        // Fall back to mock context
       }
     }
 
     if (!userCtx.identity_statement) {
       return NextResponse.json({
-        message: "I'd love to learn more about you first — what kind of person are you hoping to become?",
+        message: "Before we begin — what kind of person are you trying to become? Finish this sentence: \"I want to be someone who...\"",
         turnsUsed,
         turnsRemaining,
       })
     }
 
-    // Generate session summary if requested
-    if (generateSummary) {
-      const summaryPrompt = buildSummaryPrompt({ userName: userCtx.name, conversation: messages })
-      const summary = await agentGuard({
-        agentName: 'constellation',
-        toolName: 'generateSummary',
-        input: { userId: userCtx.id, messageCount: messages.length },
-        userId: userCtx.id,
-        fn: () => callClaude({ systemPrompt: summaryPrompt, messages, maxTokens: 256 }),
-      })
-
-      if (userId) {
-        await supabase.from('conversation_memory').insert({
-          user_id: userId,
-          agent: 'constellation',
-          summary,
-        })
+    // ── Load profile context (from Explore reflections) ───────────────────────
+    let profileContext: string | null = null
+    if (userId) {
+      try {
+        profileContext = await getProfileContext(userId)
+      } catch {
+        // Non-fatal
       }
-
-      return NextResponse.json({ summary })
     }
 
-    let systemPrompt = buildConstellationSystemPrompt({
+    // ── Build system prompt ───────────────────────────────────────────────────
+    let systemPrompt = buildCrystalBallSystemPrompt({
       userName: userCtx.name,
       identityStatement: userCtx.identity_statement,
-      goalCategory: userCtx.goal_category,
-      frictionPoint: userCtx.friction_point,
+      profileContext,
     })
 
     // Inject wrap-up hint when turns are running low
     if (turnsRemaining <= WRAP_UP_AT) {
-      systemPrompt += `\n\n[SYSTEM: You have ${turnsRemaining} exchange${turnsRemaining === 1 ? '' : 's'} remaining in this session. Naturally begin wrapping up and offer the habit-building handoff.]`
+      systemPrompt += `\n\n[SYSTEM: You have ${turnsRemaining} exchange${turnsRemaining === 1 ? '' : 's'} remaining. You must now write your closing message to the user and output the CRYSTAL_BALL_SUMMARY JSON on the next line — even if you have to extrapolate the missing fields from context. Do not leave it blank.]`
     }
 
+    // ── Call Claude ────────────────────────────────────────────────────────────
     const reply = await agentGuard({
-      agentName: 'constellation',
+      agentName: 'crystal-ball',
       toolName: 'chat',
       input: { userId: userCtx.id, turnsUsed, turnsRemaining },
       userId: userCtx.id,
       fn: () => callClaude({ systemPrompt, messages }),
     })
 
-    // Auto-trigger handoff offer on last available turn
-    const isLastTurn = turnsRemaining === 1
+    // ── Detect CRYSTAL_BALL_SUMMARY marker ────────────────────────────────────
+    const markerIdx = reply.indexOf(SUMMARY_MARKER)
+    if (markerIdx !== -1) {
+      const cleanReply = reply.slice(0, markerIdx).trim()
+      const jsonStr = reply.slice(markerIdx + SUMMARY_MARKER.length).trim()
+
+      // Save to conversation_memory (best-effort)
+      if (userId) {
+        try {
+          await supabase.from('conversation_memory').insert({
+            user_id: userId,
+            agent: 'crystal-ball',
+            summary: jsonStr,
+          })
+        } catch {
+          // Non-fatal
+        }
+      }
+
+      return NextResponse.json({
+        message: cleanReply,
+        showHandoff: true,
+        turnsUsed,
+        turnsRemaining,
+      })
+    }
 
     return NextResponse.json({
       message: reply,
       turnsUsed,
       turnsRemaining,
-      showHandoff: isLastTurn,
     })
   } catch (err) {
     console.error('[POST /api/agents/constellation]', err)

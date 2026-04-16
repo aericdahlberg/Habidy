@@ -6,6 +6,15 @@ import type { Message } from '@/lib/claude'
 const MAX_TURNS = 20
 const WARN_AT_TURNS = 5  // show counter when this many turns remain
 
+export type HabitSuggestionResponse = {
+  identity_label: string
+  habit_name: string
+  cue: string
+  two_minute_version: string
+  category: string
+  proposedId: string | null
+}
+
 type Props = {
   agentEndpoint: string
   userId?: string
@@ -13,6 +22,7 @@ type Props = {
   onHandoff?: () => void
   handoffLabel?: string
   onHabitReady?: (habitData: Record<string, string>) => void
+  onHabitsReady?: (habits: HabitSuggestionResponse[]) => void
   extraPayload?: Record<string, unknown>
 }
 
@@ -23,6 +33,7 @@ export default function ChatInterface({
   onHandoff,
   handoffLabel = 'Build a habit →',
   onHabitReady,
+  onHabitsReady,
   extraPayload,
 }: Props) {
   const [messages, setMessages] = useState<Message[]>([])
@@ -68,6 +79,7 @@ export default function ChatInterface({
         message?: string
         habitReady?: boolean
         habitData?: Record<string, string>
+        habitsReady?: HabitSuggestionResponse[]
         error?: string
         limitReached?: boolean
         turnsUsed?: number
@@ -113,6 +125,11 @@ export default function ChatInterface({
       if (data.habitReady && data.habitData && onHabitReady) {
         setHabitReady(true)
         onHabitReady(data.habitData)
+      }
+
+      if (data.habitsReady && data.habitsReady.length > 0 && onHabitsReady) {
+        setHabitReady(true)
+        onHabitsReady(data.habitsReady)
       }
     } catch (err) {
       console.error('[ChatInterface] fetch error', err)

@@ -3,63 +3,75 @@ export type ArchitectContext = {
   identityStatement: string
   goalCategory: string
   timeAvailable: string
-  constellationSummary: string
+  crystalBallSummary: string
+  profileContext: string | null
 }
 
 export function buildArchitectSystemPrompt(ctx: ArchitectContext): string {
-  const summarySection = ctx.constellationSummary
-    ? `- Constellation notes: ${ctx.constellationSummary}`
-    : `- Constellation notes: (no prior conversation — continue without it)`
+  const crystalBallSection = ctx.crystalBallSummary
+    ? `Crystal Ball investigation notes:\n${ctx.crystalBallSummary}`
+    : `Crystal Ball investigation notes: (no prior session — ask what you need)`
+
+  const profileSection = ctx.profileContext
+    ? `User profile context:\n${ctx.profileContext}`
+    : ''
 
   return `You are Architect, a habit-building coach inside Hab-Idy.
-You guide ${ctx.userName} through building exactly ONE habit using
-the Atomic Habits framework (James Clear).
+Your job: design exactly 2–3 precise, identity-based habits for ${ctx.userName} using the Atomic Habits framework.
 
-About this user:
-- They want to be: ${ctx.identityStatement}
+User context:
+- Identity statement: "${ctx.identityStatement}"
 - Focus area: ${ctx.goalCategory}
 - Time available: ${ctx.timeAvailable}
-${summarySection}
+${profileSection ? profileSection + '\n' : ''}${crystalBallSection}
 
-Your internal steps (follow in order, conversationally — never announce them):
-1. Identity: who do they want to be?
-2. Behavior: what does that person do?
-3. Enjoyment: make it attractive
-4. Cue: implementation intention ("After X, I will Y at Z")
-5. Start small: the 2-minute version
-6. Close the loop: connect habit to identity, summarize, save
+How to work:
+1. If Crystal Ball notes are present, you already have most of what you need. Confirm anything unclear in 1–2 questions max, then generate.
+2. If notes are absent, use 3–5 focused questions to understand identity, behaviors, and a specific cue before generating.
+3. Never ask more than one question per message.
+4. When ready, write a brief closing line (e.g. "Here's what I've got for you—"), then output the marker on a new line.
 
-Your rules:
-- ONE question per message. Always.
-- Never accept vague answers. "Be healthier" means ask what that looks like.
-- Never suggest more than one habit. If they ask for more:
-  "Let's make this one automatic first. Then we build."
-- The CUE step is the most important — don't advance until it is specific.
-- Reference Constellation notes naturally if relevant.
-- End with a clear summary of the full habit, then:
-  "Every time you do this, you're casting a vote for the person you're becoming."
-- When the habit is fully defined, end your message with this exact JSON block on a new line:
-  HABIT_READY:{"name":"...","identity_link":"...","cue":"...","craving":"...","action":"...","reward":"...","two_minute_version":"...","time_of_day":"morning|afternoon|evening|anytime"}
+Output exactly 2–3 habits as a JSON array on a new line when ready:
+HABITS_READY:[
+  {
+    "identity_label": "I am a ___",
+    "habit_name": "short habit name",
+    "cue": "After I [existing routine], I will [new behavior] at [location/time]",
+    "two_minute_version": "the smallest possible start — under 2 minutes",
+    "category": "Health & Fitness|Career & Learning|Relationships|Creativity|Mindset & Energy|Something else"
+  }
+]
 
-Keep responses warm but focused. 2-4 sentences, then your question.`
+Rules for the JSON:
+- All fields required, no nulls.
+- identity_label must be "I am a ___" format — specific, not vague ("I am a runner", not "I am someone who is healthy").
+- cue must follow the exact "After I..., I will... at..." format.
+- Habits should be distinct and non-redundant — different behaviors, not just variations.
+- category must be one of the six listed options exactly.
+- Output valid JSON. The entire array must be on consecutive lines with no trailing text after the closing bracket.`
 }
 
-export type HabitData = {
-  name: string
-  identity_link: string
+// The shape Claude outputs per habit
+export type HabitSuggestion = {
+  identity_label: string
+  habit_name: string
   cue: string
-  craving: string
-  action: string
-  reward: string
   two_minute_version: string
-  time_of_day: string
+  category: string
 }
 
-export function extractHabitFromMessage(message: string): HabitData | null {
-  const match = message.match(/HABIT_READY:(\{[\s\S]+\})/)
+// A proposed habit row returned from the DB (includes the ID for later selection tracking)
+export type ProposedHabit = HabitSuggestion & {
+  id: string
+}
+
+export function extractHabitsFromMessage(message: string): HabitSuggestion[] | null {
+  const match = message.match(/HABITS_READY:(\[[\s\S]+?\])\s*$/)
   if (!match) return null
   try {
-    return JSON.parse(match[1]) as HabitData
+    const parsed = JSON.parse(match[1])
+    if (!Array.isArray(parsed) || parsed.length === 0) return null
+    return parsed as HabitSuggestion[]
   } catch {
     return null
   }
