@@ -20,7 +20,7 @@ export default function WelcomePage() {
         .eq('id', user.id)
         .maybeSingle()
 
-      // If user has already seen welcome, skip straight to dashboard
+      // Already seen welcome — skip to dashboard
       if (data && data.new_user === false) {
         router.replace('/dashboard')
         return
@@ -43,48 +43,81 @@ export default function WelcomePage() {
   }
 
   if (checking) {
-    return <div className="flex min-h-screen items-center justify-center bg-white" />
+    return <div className="flex min-h-screen items-center justify-center bg-zinc-900" />
   }
 
   return (
-    <div className="flex min-h-screen flex-col bg-white px-6">
-      <div className="mx-auto flex w-full max-w-sm flex-1 flex-col justify-center py-16">
+    <div className="min-h-screen bg-zinc-900">
 
-        {/* Eyebrow */}
-        <p className="mb-6 text-xs font-semibold uppercase tracking-widest text-zinc-400">
+      {/* Dark hero */}
+      <div className="px-6 pt-16 pb-14">
+        <p className="text-xs font-semibold uppercase tracking-widest text-zinc-500">
           Hab-Idy
         </p>
 
-        {/* Hero statement */}
-        <h1 className="text-4xl font-bold leading-tight tracking-tight text-zinc-900">
+        <h1 className="mt-7 text-[2.6rem] font-bold leading-[1.12] tracking-tight text-white">
           Every action is a vote for the person you want to become.
         </h1>
 
-        <p className="mt-5 text-lg leading-relaxed text-zinc-500">
-          Success isn&apos;t a goal you hit — it&apos;s a lagging indicator of what you do daily.
-          The people who build lasting change aren&apos;t more motivated than you. They just have
-          better systems.
+        <p className="mt-6 text-lg leading-relaxed text-zinc-400">
+          Success isn&apos;t a goal you hit. It&apos;s a lagging indicator of what you
+          do — every single day.
+        </p>
+      </div>
+
+      {/* White content section — rounded top, overlaps dark */}
+      <div className="rounded-t-3xl bg-white px-6 pt-8 pb-16">
+
+        {/* Why this works */}
+        <p className="text-xs font-semibold uppercase tracking-widest text-zinc-400">
+          Why this works
         </p>
 
-        {/* Psychology section */}
-        <div className="mt-10 rounded-3xl bg-zinc-50 px-6 py-6">
-          <p className="text-sm font-semibold uppercase tracking-wide text-zinc-400">
-            Why this works
+        <p className="mt-5 text-base leading-relaxed text-zinc-700">
+          Goal-based habits have an expiry date. The moment you hit the goal, the reason
+          to keep going disappears.
+        </p>
+
+        <p className="mt-4 text-base leading-relaxed text-zinc-700">
+          Identity-based habits don&apos;t work like that. You&apos;re not trying to run
+          a 5K — you&apos;re becoming a runner. Every run is evidence of that identity.
+          That evidence compounds.
+        </p>
+
+        <p className="mt-4 text-base leading-relaxed text-zinc-700">
+          The people who build lasting change aren&apos;t more motivated than you.
+          They just have a better story about{' '}
+          <span className="font-semibold text-zinc-900">who they are</span>.
+        </p>
+
+        {/* Pull quote */}
+        <div className="mt-8 border-l-2 border-zinc-900 pl-5">
+          <p className="text-base italic leading-relaxed text-zinc-600">
+            &ldquo;Every habit is a vote for the identity you want to prove.&rdquo;
           </p>
-          <p className="mt-3 text-base leading-relaxed text-zinc-700">
-            Goal-based habits fail because hitting the goal removes the reason to continue.
-            Identity-based habits stick because they&apos;re tied to who you are —
-            <span className="font-semibold text-zinc-900"> not what you want.</span>
-          </p>
-          <p className="mt-3 text-base leading-relaxed text-zinc-700">
-            Instead of &ldquo;I want to run a 5K,&rdquo; we build toward &ldquo;I am a runner.&rdquo;
-            Every habit we create is evidence of that identity.
-          </p>
+        </div>
+
+        {/* Three feature points */}
+        <div className="mt-8 space-y-3">
+          {[
+            { icon: '🧬', title: 'Identity first', body: 'We start with who you want to be, not what you want to do.' },
+            { icon: '🔁', title: 'Built to stick', body: 'Habits anchored to existing routines are far harder to drop.' },
+            { icon: '📈', title: 'Evidence compounds', body: 'Each small action adds to the proof that you are that person.' },
+          ].map(({ icon, title, body }) => (
+            <div key={title} className="flex items-start gap-4 rounded-2xl bg-zinc-50 px-5 py-4">
+              <span className="text-xl">{icon}</span>
+              <div>
+                <p className="text-sm font-semibold text-zinc-900">{title}</p>
+                <p className="mt-0.5 text-sm leading-relaxed text-zinc-500">{body}</p>
+              </div>
+            </div>
+          ))}
         </div>
 
         {/* Time note */}
         <p className="mt-8 text-center text-sm text-zinc-400">
-          This takes about 5 minutes. It&apos;s worth it.
+          This takes about 5 minutes.{' '}
+          <span className="font-medium text-zinc-600">It&apos;s worth it.</span>
         </p>
 
         {/* CTA */}

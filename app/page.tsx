@@ -7,10 +7,30 @@ import { supabase } from "@/lib/supabase";
 type Step = 1 | 2 | 3 | 4 | "done";
 
 const IDENTITY_CARDS = [
-  { label: "reader",  gradient: "from-slate-800 to-slate-600" },
-  { label: "athlete", gradient: "from-orange-700 to-rose-700" },
-  { label: "writer",  gradient: "from-indigo-800 to-violet-700" },
-  { label: "artist",  gradient: "from-pink-700 to-purple-700" },
+  {
+    label: "reader",
+    gradient: "from-slate-800 via-slate-700 to-slate-500",
+    emoji: "📚",
+    description: "curious, reflective, always learning",
+  },
+  {
+    label: "athlete",
+    gradient: "from-orange-600 via-rose-600 to-pink-700",
+    emoji: "🏃",
+    description: "disciplined, energised, showing up",
+  },
+  {
+    label: "writer",
+    gradient: "from-indigo-800 via-violet-700 to-purple-600",
+    emoji: "✍️",
+    description: "creative, thoughtful, making things",
+  },
+  {
+    label: "artist",
+    gradient: "from-pink-600 via-fuchsia-600 to-violet-700",
+    emoji: "🎨",
+    description: "expressive, bold, seeing differently",
+  },
 ] as const;
 
 const FOCUS_AREAS = [
@@ -100,20 +120,35 @@ export default function Home() {
             <div className="flex flex-col gap-6">
               {/* Rotating identity card */}
               <div
-                className={`relative w-full rounded-3xl bg-gradient-to-br ${card.gradient} px-6 py-10 transition-all duration-700`}
+                className={`relative w-full overflow-hidden rounded-3xl bg-gradient-to-br ${card.gradient} transition-all duration-700`}
+                style={{ minHeight: '180px' }}
               >
-                <p className="text-xs font-semibold uppercase tracking-widest text-white/60">
-                  I am a
-                </p>
-                <p className="mt-1 text-4xl font-bold capitalize text-white">
-                  {card.label}
-                </p>
+                {/* Subtle noise texture overlay */}
+                <div className="absolute inset-0 opacity-10"
+                  style={{
+                    backgroundImage: 'url("data:image/svg+xml,%3Csvg viewBox=\'0 0 256 256\' xmlns=\'http://www.w3.org/2000/svg\'%3E%3Cfilter id=\'noise\'%3E%3CfeTurbulence type=\'fractalNoise\' baseFrequency=\'0.9\' numOctaves=\'4\' stitchTiles=\'stitch\'/%3E%3C/filter%3E%3Crect width=\'100%25\' height=\'100%25\' filter=\'url(%23noise)\' opacity=\'1\'/%3E%3C/svg%3E")',
+                    backgroundSize: '256px 256px',
+                  }}
+                />
+
+                <div className="relative px-6 py-8">
+                  <span className="text-3xl">{card.emoji}</span>
+                  <p className="mt-3 text-xs font-semibold uppercase tracking-widest text-white/50">
+                    I am a
+                  </p>
+                  <p className="mt-1 text-4xl font-bold capitalize tracking-tight text-white">
+                    {card.label}
+                  </p>
+                  <p className="mt-2 text-sm text-white/60">{card.description}</p>
+                </div>
+
+                {/* Progress dots */}
                 <div className="absolute bottom-4 left-0 right-0 flex justify-center gap-1.5">
                   {IDENTITY_CARDS.map((_, i) => (
                     <div
                       key={i}
                       className={`h-1 rounded-full transition-all duration-300 ${
-                        i === cardIndex ? "w-4 bg-white" : "w-1 bg-white/40"
+                        i === cardIndex ? "w-5 bg-white" : "w-1.5 bg-white/30"
                       }`}
                     />
                   ))}

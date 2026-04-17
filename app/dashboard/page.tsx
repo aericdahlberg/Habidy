@@ -154,14 +154,24 @@ export default function DashboardPage() {
     <div className="flex min-h-screen flex-col bg-zinc-50 pb-24">
       {/* Header */}
       <div className="bg-white px-5 pt-12 pb-6">
-        <div className="mx-auto max-w-sm">
-          <h1 className="text-2xl font-semibold text-zinc-900">{getGreeting()}</h1>
-          {identityStatement && (
-            <p className="mt-1 text-sm text-zinc-500 leading-relaxed">
-              You&apos;re becoming someone who{' '}
-              {identityStatement.replace(/^i want to be someone who\s*/i, '')}
-            </p>
-          )}
+        <div className="mx-auto max-w-sm flex items-start justify-between">
+          <div>
+            <h1 className="text-2xl font-semibold text-zinc-900">{getGreeting()}</h1>
+            {identityStatement && (
+              <p className="mt-1 text-sm text-zinc-500 leading-relaxed">
+                You&apos;re becoming someone who{' '}
+                {identityStatement.replace(/^i want to be someone who\s*/i, '')}
+              </p>
+            )}
+          </div>
+          {/* + button — add a new identity */}
+          <button
+            onClick={() => router.push('/')}
+            className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-zinc-100 text-lg font-light text-zinc-600 transition-colors hover:bg-zinc-200 active:bg-zinc-300"
+            title="Add new identity"
+          >
+            +
+          </button>
         </div>
       </div>
 
