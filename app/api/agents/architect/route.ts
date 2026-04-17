@@ -1,9 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { callClaude, Message } from '@/lib/claude'
+import { callClaude, resolveModel, Message } from '@/lib/claude'
+import type { TokenUsage } from '@/lib/claude'
 import { agentGuard } from '@/lib/agentGuard'
 import { buildArchitectSystemPrompt, extractHabitsFromMessage } from '@/lib/agents/architect'
 import { supabase, getProfileContext } from '@/lib/supabase'
+import { logAgentSession } from '@/lib/logger'
 import { createClient } from '@supabase/supabase-js'
+
+// Swap model by setting AGENT_MODEL in .env.local, or override here for this agent only.
+// Supported: claude-opus-4-5 | claude-sonnet-4-5 | claude-haiku-4-5-20251001
+//            gpt-4o | gpt-4o-mini | o3-mini 
+const AGENT_MODEL = resolveModel()
 
 const MAX_TURNS = 20
 const WRAP_UP_AT = 3
@@ -39,6 +46,15 @@ export async function POST(req: NextRequest) {
     const turnsRemaining = MAX_TURNS - turnsUsed
 
     if (turnsUsed >= MAX_TURNS) {
+      await logAgentSession({
+        userId,
+        agent: 'architect',
+        model: AGENT_MODEL,
+        turnsUsed,
+        tokenUsage: null,
+        goalReached: false,
+        conversation: messages,
+      })
       return NextResponse.json({
         message: "We've covered a lot of ground. Even without a perfect cue, you have everything you need to start. Let's save what we have.",
         limitReached: true,
@@ -120,12 +136,19 @@ export async function POST(req: NextRequest) {
     }
 
     // ── Call Claude ────────────────────────────────────────────────────────────
+    let turnUsage: TokenUsage | null = null
+
     const reply = await agentGuard({
       agentName: 'architect',
       toolName: 'chat',
       input: { userId: userCtx.id, turnsUsed, turnsRemaining },
       userId: userCtx.id,
-      fn: () => callClaude({ systemPrompt, messages }),
+      fn: () => callClaude({
+        systemPrompt,
+        messages,
+        model: AGENT_MODEL,
+        onUsage: (u) => { turnUsage = u },
+      }),
     })
 
     // ── Detect HABITS_READY ───────────────────────────────────────────────────
@@ -151,6 +174,17 @@ export async function POST(req: NextRequest) {
           // Non-fatal — IDs just won't be available for later marking
         }
       }
+
+      // Session ended naturally — log it
+      await logAgentSession({
+        userId,
+        agent: 'architect',
+        model: AGENT_MODEL,
+        turnsUsed: turnsUsed + 1,  // include this final turn
+        tokenUsage: turnUsage,
+        goalReached: true,
+        conversation: [...messages, { role: 'assistant', content: cleanReply }],
+      })
 
       return NextResponse.json({
         message: cleanReply,

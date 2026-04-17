@@ -1,8 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 import { createClient } from '@supabase/supabase-js'
-import { callClaude } from '@/lib/claude'
+import { callClaude, resolveModel } from '@/lib/claude'
 import { agentGuard } from '@/lib/agentGuard'
+
+// Swap model by setting AGENT_MODEL in .env.local, or override here for this agent only.
+// Supported: claude-opus-4-5 | claude-sonnet-4-5 | claude-haiku-4-5-20251001
+//            gpt-4o | gpt-4o-mini | o3-mini
+const AGENT_MODEL = resolveModel()
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
@@ -97,6 +102,7 @@ Respond with ONLY the updated profile summary — no intro, no explanation, no q
           systemPrompt,
           messages: [{ role: 'user', content: reflectionsList }],
           maxTokens: 300,
+          model: AGENT_MODEL,
         }),
     })
 

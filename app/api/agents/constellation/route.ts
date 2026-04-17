@@ -1,8 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { callClaude, Message } from '@/lib/claude'
+import { callClaude, resolveModel, Message } from '@/lib/claude'
+import type { TokenUsage } from '@/lib/claude'
 import { agentGuard } from '@/lib/agentGuard'
+import { logAgentSession } from '@/lib/logger'
 import { buildCrystalBallSystemPrompt, buildForcedSummaryPrompt } from '@/lib/agents/constellation'
 import { supabase, getProfileContext } from '@/lib/supabase'
+
+// Swap model by setting AGENT_MODEL in .env.local, or override here for this agent only.
+// Supported: claude-opus-4-5 | claude-sonnet-4-5 | claude-haiku-4-5-20251001
+//            gpt-4o | gpt-4o-mini | o3-mini
+const AGENT_MODEL = resolveModel()
 
 const MAX_TURNS = 10
 const WRAP_UP_AT = 2  // inject wrap-up hint when this many user turns remain
@@ -34,6 +41,7 @@ export async function POST(req: NextRequest) {
     // ── Limit reached: force-generate summary from conversation ──────────────
     if (turnsUsed >= MAX_TURNS) {
       let summaryJson: string | null = null
+      let forcedUsage: TokenUsage | null = null
 
       if (userId) {
         try {
@@ -57,6 +65,8 @@ export async function POST(req: NextRequest) {
                 }),
                 messages: [{ role: 'user', content: 'Generate the summary now.' }],
                 maxTokens: 512,
+                model: AGENT_MODEL,
+                onUsage: (u) => { forcedUsage = u },
               }),
           })
 
@@ -71,6 +81,16 @@ export async function POST(req: NextRequest) {
           // Non-fatal — still show handoff
         }
       }
+
+      await logAgentSession({
+        userId,
+        agent: 'crystal_ball',
+        model: AGENT_MODEL,
+        turnsUsed,
+        tokenUsage: forcedUsage,
+        goalReached: false,
+        conversation: messages,
+      })
 
       return NextResponse.json({
         message: "We've covered a lot of ground. I have what I need — let's hand this to Architect.",
@@ -140,12 +160,19 @@ export async function POST(req: NextRequest) {
     }
 
     // ── Call Claude ────────────────────────────────────────────────────────────
+    let turnUsage: TokenUsage | null = null
+
     const reply = await agentGuard({
       agentName: 'crystal-ball',
       toolName: 'chat',
       input: { userId: userCtx.id, turnsUsed, turnsRemaining },
       userId: userCtx.id,
-      fn: () => callClaude({ systemPrompt, messages }),
+      fn: () => callClaude({
+        systemPrompt,
+        messages,
+        model: AGENT_MODEL,
+        onUsage: (u) => { turnUsage = u },
+      }),
     })
 
     // ── Detect CRYSTAL_BALL_SUMMARY marker ────────────────────────────────────
@@ -166,6 +193,17 @@ export async function POST(req: NextRequest) {
           // Non-fatal
         }
       }
+
+      // Session ended naturally — log it
+      await logAgentSession({
+        userId,
+        agent: 'crystal_ball',
+        model: AGENT_MODEL,
+        turnsUsed: turnsUsed + 1,  // include this final turn
+        tokenUsage: turnUsage,
+        goalReached: true,
+        conversation: [...messages, { role: 'assistant', content: cleanReply }],
+      })
 
       return NextResponse.json({
         message: cleanReply,
