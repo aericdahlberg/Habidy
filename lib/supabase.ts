@@ -12,10 +12,10 @@ const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? 'placeholde
 // JWT is always used for Authorization headers and the raw key is never sent as a Bearer token.
 export const supabase = createBrowserClient(supabaseUrl, supabaseAnonKey)
 
-// Server-side admin client — uses SUPABASE_SERVICE_ROLE_KEY when set so it
-// bypasses RLS. Falls back to the anon key in local dev. Never exported as a
-// shared instance; always created fresh for each server-side call.
-function adminClient() {
+// Server-side admin client — uses SUPABASE_SERVICE_ROLE_KEY so it bypasses RLS.
+// Always call as a function (never cache the instance) so env vars are read at
+// request time rather than module load time.
+export function adminClient() {
   return createClient(
     supabaseUrl,
     process.env.SUPABASE_SERVICE_ROLE_KEY ?? supabaseAnonKey,
@@ -38,27 +38,26 @@ export async function getProfileContext(userId: string): Promise<string | null> 
 export type Database = {
   users: {
     id: string
-    email: string
-    name: string | null
+    new_user: boolean
     identity_statement: string | null
     goal_category: string | null
     friction_point: string | null
     time_available: string | null
-    onboarding_done: boolean
     created_at: string
   }
   habits: {
     id: string
     user_id: string
-    name: string
-    identity_link: string | null
+    habit_name: string
+    identity_label: string | null
     cue: string | null
-    craving: string | null
-    action: string | null
-    reward: string | null
     two_minute_version: string | null
-    time_of_day: string | null
-    goal_category: string | null
+    category: string | null
+    color: string | null
+    action: string | null
+    craving: string | null
+    reward: string | null
+    time_of_day: string
     is_active: boolean
     created_at: string
   }

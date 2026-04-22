@@ -10,11 +10,11 @@ import { supabase } from '@/lib/supabase'
 
 type Habit = {
   id: string
-  name: string
-  identity_link: string | null
+  habit_name: string
+  identity_label: string | null
   cue: string | null
   time_of_day: string | null
-  goal_category: string | null
+  category: string | null
 }
 
 type Log = { date: string; completed: boolean }

@@ -6,11 +6,11 @@ import type { DayStatus } from '@/lib/streak'
 
 type Habit = {
   id: string
-  name: string
-  identity_link: string | null
+  habit_name: string
+  identity_label: string | null
   cue: string | null
   time_of_day: string | null
-  goal_category: string | null
+  category: string | null
 }
 
 type Props = {
@@ -119,7 +119,7 @@ export default function HabitCard({ habit, streak, last7, todayLogged, todayComp
       })
 
       // Feed survey content into profile context via explore
-      const parts: string[] = [`Habit check-in for "${habit.name}": did ${completionLevel} of it.`]
+      const parts: string[] = [`Habit check-in for "${habit.habit_name}": did ${completionLevel} of it.`]
       if (wentRight.trim()) parts.push(`What went right: ${wentRight.trim()}`)
       if (wentWrong.trim()) parts.push(`What went wrong: ${wentWrong.trim()}`)
       await fetch('/api/explore', {
@@ -140,7 +140,7 @@ export default function HabitCard({ habit, streak, last7, todayLogged, todayComp
     }
   }
 
-  const style = categoryStyle(habit.goal_category)
+  const style = categoryStyle(habit.category)
 
   return (
     <>
@@ -153,17 +153,17 @@ export default function HabitCard({ habit, streak, last7, todayLogged, todayComp
         <div className={`absolute left-0 top-0 bottom-0 w-1 ${style.bar}`} />
 
         {/* Identity banner */}
-        {habit.identity_link && (
+        {habit.identity_label && (
           <div className={`pl-7 pr-6 py-2.5 ${style.bannerBg}`}>
             <p className={`text-xs font-semibold uppercase tracking-wide ${style.bannerText}`}>
-              {habit.identity_link}
+              {habit.identity_label}
             </p>
           </div>
         )}
 
         <div className="px-6 py-5 pl-7">
           {/* Habit name */}
-          <h3 className="text-lg font-semibold text-zinc-900">{habit.name}</h3>
+          <h3 className="text-lg font-semibold text-zinc-900">{habit.habit_name}</h3>
 
           {/* Cue */}
           {habit.cue && (

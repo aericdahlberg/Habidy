@@ -50,6 +50,6 @@ Conversation transcript:
 ${transcript}
 
 Based on this, extract or infer all five habit-building fields.
-Respond with ONLY valid JSON on a single line — no other text:
+Output ONLY the raw JSON object below — no markdown, no code fences, no explanation, nothing else:
 {"identity":"...","actions":"...","attractive":"...","cue":"...","two_minute":"..."}`
 }

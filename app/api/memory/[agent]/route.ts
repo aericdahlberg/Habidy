@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { supabase } from '@/lib/supabase'
+import { adminClient } from '@/lib/supabase'
+
+const supabase = adminClient()
 
 export async function GET(
   req: NextRequest,

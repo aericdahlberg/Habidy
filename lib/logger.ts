@@ -1,5 +1,4 @@
-import { createClient } from '@supabase/supabase-js'
-import { supabase } from './supabase'
+import { adminClient } from './supabase'
 import type { TokenUsage, Message } from './claude'
 
 // ── Per-tool log (used by agentGuard) ────────────────────────────────────────
@@ -17,7 +16,7 @@ export type LogEntry = {
 
 export async function writeLog(entry: LogEntry): Promise<void> {
   try {
-    await supabase.from('tool_logs').insert({
+    await adminClient().from('tool_logs').insert({
       user_id: entry.userId ?? null,
       agent: entry.agent ?? null,
       tool_name: entry.toolName,
@@ -34,14 +33,6 @@ export async function writeLog(entry: LogEntry): Promise<void> {
 }
 
 // ── Agent session log (written once per completed conversation) ───────────────
-
-// Uses the service role key so it bypasses RLS — always called server-side.
-function adminClient() {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-  )
-}
 
 export type AgentSessionEntry = {
   userId: string | null | undefined

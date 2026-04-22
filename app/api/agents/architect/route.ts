@@ -3,9 +3,8 @@ import { callClaude, resolveModel, Message } from '@/lib/claude'
 import type { TokenUsage } from '@/lib/claude'
 import { agentGuard } from '@/lib/agentGuard'
 import { buildArchitectSystemPrompt, extractHabitsFromMessage } from '@/lib/agents/architect'
-import { supabase, getProfileContext } from '@/lib/supabase'
+import { adminClient, getProfileContext } from '@/lib/supabase'
 import { logAgentSession } from '@/lib/logger'
-import { createClient } from '@supabase/supabase-js'
 
 // Swap model by setting AGENT_MODEL in .env.local, or override here for this agent only.
 // Supported: claude-opus-4-5 | claude-sonnet-4-5 | claude-haiku-4-5-20251001
@@ -23,12 +22,7 @@ const MOCK_USER = {
   time_available: '15 minutes',
 }
 
-function adminClient() {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-  )
-}
+const supabase = adminClient()
 
 export async function POST(req: NextRequest) {
   try {

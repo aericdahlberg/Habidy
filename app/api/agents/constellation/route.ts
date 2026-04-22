@@ -4,7 +4,9 @@ import type { TokenUsage } from '@/lib/claude'
 import { agentGuard } from '@/lib/agentGuard'
 import { logAgentSession } from '@/lib/logger'
 import { buildCrystalBallSystemPrompt, buildForcedSummaryPrompt } from '@/lib/agents/constellation'
-import { supabase, getProfileContext } from '@/lib/supabase'
+import { adminClient, getProfileContext } from '@/lib/supabase'
+
+const supabase = adminClient()
 
 // Swap model by setting AGENT_MODEL in .env.local, or override here for this agent only.
 // Supported: claude-opus-4-5 | claude-sonnet-4-5 | claude-haiku-4-5-20251001
@@ -47,7 +49,7 @@ export async function POST(req: NextRequest) {
         try {
           const { data: userRow } = await supabase
             .from('users')
-            .select('name, identity_statement')
+            .select('identity_statement')
             .eq('id', userId)
             .single()
 
@@ -59,7 +61,7 @@ export async function POST(req: NextRequest) {
             fn: () =>
               callClaude({
                 systemPrompt: buildForcedSummaryPrompt({
-                  userName: (userRow?.name as string) ?? 'Friend',
+                  userName: 'Friend',
                   identityStatement: (userRow?.identity_statement as string) ?? '',
                   conversation: messages,
                 }),
