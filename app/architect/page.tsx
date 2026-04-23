@@ -125,6 +125,7 @@ export default function ArchitectPage() {
             userId={userId}
             onHabitsReady={handleHabitsReady}
             initialMessage="Let's build your habits. I've reviewed your Crystal Ball session — give me a moment and I'll have a few options for you. Or tell me anything else I should know first."
+            thinkingLabel="Building your habits..."
           />
         </div>
       )}

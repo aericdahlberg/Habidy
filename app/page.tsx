@@ -8,25 +8,25 @@ type Step = 1 | 2 | 3 | 4 | "done";
 
 const IDENTITY_CARDS = [
   {
-    label: "reader",
+    label: "read 50 books",
     gradient: "from-slate-800 via-slate-700 to-slate-500",
     emoji: "📚",
-    description: "curious, reflective, always learning",
+    description: "one page at a time, every night",
   },
   {
-    label: "athlete",
+    label: "run a marathon",
     gradient: "from-orange-600 via-rose-600 to-pink-700",
     emoji: "🏃",
     description: "disciplined, energised, showing up",
   },
   {
-    label: "writer",
+    label: "write every day",
     gradient: "from-indigo-800 via-violet-700 to-purple-600",
     emoji: "✍️",
     description: "creative, thoughtful, making things",
   },
   {
-    label: "artist",
+    label: "build something I love",
     gradient: "from-pink-600 via-fuchsia-600 to-violet-700",
     emoji: "🎨",
     description: "expressive, bold, seeing differently",
@@ -134,10 +134,10 @@ export default function Home() {
                 <div className="relative px-6 py-8">
                   <span className="text-3xl">{card.emoji}</span>
                   <p className="mt-3 text-xs font-semibold uppercase tracking-widest text-white/50">
-                    I am a
+                    In a year
                   </p>
-                  <p className="mt-1 text-4xl font-bold capitalize tracking-tight text-white">
-                    {card.label}
+                  <p className="mt-1 text-4xl font-bold tracking-tight text-white">
+                    I want to {card.label}
                   </p>
                   <p className="mt-2 text-sm text-white/60">{card.description}</p>
                 </div>
@@ -156,7 +156,7 @@ export default function Home() {
               </div>
 
               <h1 className="text-2xl font-semibold leading-tight tracking-tight text-zinc-900">
-                How can I help you be the person you want to be?
+                Who do you want to be in a year?
               </h1>
               <input
                 type="text"
