@@ -12,6 +12,7 @@
     "@anthropic-ai/sdk": "^0.88.0",
     "@supabase/ssr": "^0.10.2",
     "@supabase/supabase-js": "^2.103.0",
+    "langsmith": "^0.5.22",
     "next": "16.2.3",
     "openai": "^6.34.0",
     "react": "19.2.4",

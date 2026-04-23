@@ -5,6 +5,7 @@ import { agentGuard } from '@/lib/agentGuard'
 import { buildArchitectSystemPrompt, extractHabitsFromMessage } from '@/lib/agents/architect'
 import { adminClient, getProfileContext } from '@/lib/supabase'
 import { logAgentSession } from '@/lib/logger'
+import { traceable } from '@/lib/langsmith'
 
 // Swap model by setting AGENT_MODEL in .env.local, or override here for this agent only.
 // Supported: claude-opus-4-5 | claude-sonnet-4-5 | claude-haiku-4-5-20251001
@@ -23,6 +24,21 @@ const MOCK_USER = {
 }
 
 const supabase = adminClient()
+
+const runArchitect = traceable(
+  async (
+    systemPrompt: string,
+    messages: Message[],
+    model: string,
+    _userId: string,
+    _turnsUsed: number,
+  ): Promise<string> => callClaude({ systemPrompt, messages, model }),
+  {
+    name: 'architect_agent',
+    run_type: 'chain',
+    tags: ['habidy', 'architect'],
+  }
+)
 
 export async function POST(req: NextRequest) {
   try {
@@ -95,7 +111,7 @@ export async function POST(req: NextRequest) {
           .from('conversation_memory')
           .select('summary')
           .eq('user_id', userId)
-          .eq('agent', 'crystal-ball')
+          .eq('agent', 'identity-gatherer')
           .order('created_at', { ascending: false })
           .limit(1)
           .single()
@@ -137,12 +153,7 @@ export async function POST(req: NextRequest) {
       toolName: 'chat',
       input: { userId: userCtx.id, turnsUsed, turnsRemaining },
       userId: userCtx.id,
-      fn: () => callClaude({
-        systemPrompt,
-        messages,
-        model: AGENT_MODEL,
-        onUsage: (u) => { turnUsage = u },
-      }),
+      fn: () => runArchitect(systemPrompt, messages, AGENT_MODEL, userCtx.id, turnsUsed),
     })
 
     // ── Detect HABITS_READY ───────────────────────────────────────────────────

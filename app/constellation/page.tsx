@@ -6,7 +6,7 @@ import NavBar from '@/components/NavBar'
 import ChatInterface from '@/components/ChatInterface'
 import { supabase } from '@/lib/supabase'
 
-export default function CrystalBallPage() {
+export default function IdentityGathererPage() {
   const router = useRouter()
   const [userId, setUserId] = useState<string | undefined>(undefined)
 
@@ -26,7 +26,7 @@ export default function CrystalBallPage() {
       <div className="flex-shrink-0 border-b border-zinc-100 px-4 py-4">
         <div className="mx-auto flex max-w-sm items-center justify-between">
           <div>
-            <h1 className="text-base font-semibold text-zinc-900">Crystal Ball</h1>
+            <h1 className="text-base font-semibold text-zinc-900">Identity Gatherer</h1>
             <p className="text-xs text-zinc-400">Your habit investigator</p>
           </div>
           <div className="flex h-8 w-8 items-center justify-center rounded-full bg-zinc-100 text-sm">
