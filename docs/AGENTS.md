@@ -1,7 +1,6 @@
 # AGENTS.md — Agents
 
-Three agents for current build. All live in `lib/agents/`.
-All call the API through `lib/claude.ts`.
+All agents live in `lib/agents/`. All call the API through `lib/claude.ts`.
 All are logged via `lib/logger.ts`. All assert on outputs before using them.
 
 ---
@@ -16,6 +15,7 @@ All are logged via `lib/logger.ts`. All assert on outputs before using them.
 3. Cap conversation at 10 turns → summarize and hand off
 4. Never invent user data. If you don't have it, ask.
 5. One question per message. No exceptions.
+6. Run eval sets on every deploy (see evals/ directory)
 ```
 
 ---
@@ -45,7 +45,7 @@ Before the user types anything, the Identity Gatherer generates an opening messa
 - Never suggests specific habits
 - References identity framing at start and again in closing recap
 - 10 turns maximum per session
-- Turn warnings injected at ≤2 turns remaining
+- Wrap-up hint injected into system prompt at ≤2 turns remaining
 
 ### Internal Goals (never announced to user)
 The agent is building answers to six fields:
@@ -61,35 +61,29 @@ The agent is building answers to six fields:
 
 ### Closing Recap
 When enough info is gathered (turns 6–10) or max turns hit:
-- Generate a 3–4 sentence recap:
-  - Reference their long-term identity directly: "Based on everything you've shared, it sounds like you're working toward becoming [identity]."
-  - What has been getting in their way
-  - What kind of habit would fit their life
+- 3–4 sentence recap: who they want to become, what's in the way, what habit would fit
+- Reference their long-term identity: "Based on everything you've shared, it sounds like you're working toward becoming [identity]."
 - End with: "Ready to build your first habit around this?"
-- Output the summary marker on the next line (see Data Flow)
 
 ### Data Flow
 - **Reads:** `identity_statement` from `users` table, `user_profile_context.summary` via `getProfileContext()`
 - **Writes:** One row to `conversation_memory` with `agent = 'identity-gatherer'`
-  - The `summary` field contains the structured JSON merged with the plain-text recap:
-    ```json
-    {
-      "who_they_want_to_be": "...",
-      "actions_that_person_takes": "...",
-      "what_makes_it_attractive": "...",
-      "environment": "...",
-      "cue": "...",
-      "two_minute_version": "...",
-      "recap": "plain-text closing recap paragraph"
-    }
-    ```
+  ```json
+  {
+    "who_they_want_to_be": "...",
+    "actions_that_person_takes": "...",
+    "what_makes_it_attractive": "...",
+    "environment": "...",
+    "cue": "...",
+    "two_minute_version": "...",
+    "recap": "plain-text closing recap paragraph"
+  }
+  ```
 
 ### Summary Marker
-Claude outputs on a new line after the closing recap:
 ```
 IDENTITY_GATHERER_SUMMARY:{"who_they_want_to_be":"...","actions_that_person_takes":"...","what_makes_it_attractive":"...","environment":"...","cue":"...","two_minute_version":"..."}
 ```
-The route parser strips the marker, injects the `recap` field from the closing message, and saves the combined object to `conversation_memory`.
 
 ---
 
@@ -116,26 +110,33 @@ For each habit, output:
 - `category`: one of the 6 goal categories
 - `color`: matching the category color
 
+### The Build Flow (follow in order, conversationally)
+```
+Step 1 — IDENTITY     Who do they want to be?
+Step 2 — BEHAVIOR     What does that person do?
+Step 3 — ENJOYMENT    Make it attractive
+Step 4 — CUE          "After X, I will Y at Z" — don't advance until specific
+Step 5 — START SMALL  The 2-minute version
+Step 6 — OUTPUT       HABITS_READY JSON
+```
+
 ### HABITS_READY Detection
-When `HABITS_READY:` is detected in the assistant message:
+When `HABITS_READY:` is detected:
 - Parse the JSON array
-- Replace the chat panel with a habit selection screen:
-  - Show all 2–3 habit cards
-  - Each card: `identity_label`, `habit_name`, `cue`, `two_minute_version`
-  - User selects 1, 2, or all 3
-  - "Start these habits →" saves selected via `POST /api/habits`
-  - Routes to `/dashboard` after 1.2s
+- Replace chat panel with habit selection screen (2–3 habit cards)
+- User selects which to activate
+- "Start these habits →" saves via `POST /api/habits`
+- Routes to `/dashboard` after 1.2s
 
 ### Unselected Habits
-Habits not selected are saved to `proposed_habits` with `selected = false`.
-These surface in `/add-habit` after the user's first 7-day streak.
+Saved to `proposed_habits` with `selected = false`. Surfaces in `/add-habit` after first 7-day streak.
 
 ### Eval Cases
-- User gives vague identity → must ask follow-up, not proceed
-- User wants only 1 habit → still generate 2–3 options
-- No cue established → must not advance to HABITS_READY
-- Identity Gatherer summary is empty → continue without it, do not error
-- `getProfileContext` returns null → continue without it, do not error
+- Vague identity → ask follow-up, never proceed
+- User wants 1 habit → still generate 2–3 options
+- No cue → don't advance to HABITS_READY
+- Identity Gatherer summary empty → continue without it, do not error
+- `getProfileContext` null → continue without it, do not error
 
 ---
 
@@ -144,12 +145,12 @@ These surface in `/add-habit` after the user's first 7-day streak.
 **Not a conversational agent** — one-shot summarizer called from `/api/explore`.
 
 ### Behavior
-1. Receives a new reflection from the user (free text)
-2. Reads all past reflections for this user from `user_reflections`
+1. Receives new free-text reflection from user
+2. Reads all past reflections from `user_reflections`
 3. Generates a concise updated profile summary
 4. Saves to `user_profile_context.summary`
 
-This summary is read by both the Identity Gatherer and Architect via `getProfileContext(userId)`.
+Read by Identity Gatherer and Architect via `getProfileContext(userId)`.
 
 ---
 
@@ -179,7 +180,80 @@ const CATEGORY_COLORS: Record<string, string> = {
 ---
 
 ## Phase 2: Future Agents
-- **Habit Breaker** — helps user identify and break a bad habit
-- **Morning Ritual** — builds a multi-step morning routine once 3 habits are solid
-- **3 Conversation Modes** — Into It / Balanced / Quick Start depth selector for Identity Gatherer
-- **Integration:** Google Calendar for cue scheduling
+
+### Agent 4: Habit Breaker ("The Analyst")
+
+**Purpose:** Helps users understand and dismantle bad habits using the cue-craving-action-reward framework in reverse. Non-judgmental, curious.
+
+**Persona:** Gentle detective. Curious, not critical. Treats bad habits as puzzles to understand, not failures to shame.
+
+**The Break Flow:**
+```
+Step 1 — NAME IT (without judgment)
+  "What's the habit you want to understand?"
+  Normalize: "Almost everyone has habits they'd like to change."
+
+Step 2 — FIND THE CUE
+  "When does this usually happen? Time of day? Situation? Emotion?"
+  "What were you feeling right before you did it last time?"
+
+Step 3 — FIND THE CRAVING
+  "What does this habit give you? Relief? Distraction? Connection?"
+  "It's serving some need — what need?"
+
+Step 4 — SHOW THE TRAJECTORY
+  Use log data if available. Be honest but compassionate.
+  "Habits don't just affect your day — they change your trajectory."
+
+Step 5 — REPLACEMENT
+  "What else could meet that same need?"
+  Optionally hand off to Architect to build the replacement habit.
+```
+
+**Eval Cases:**
+- User is self-critical → redirect to curiosity, not shame
+- No habit log data → proceed with questions only, no data references
+- User can't identify the cue → offer list of common cue categories
+
+---
+
+### Agent 5: Navigator ("The Daily Planner") — Phase 2
+
+**Purpose:** Pulls tasks and habits, then recommends a time-blocked daily schedule based on energy levels, urgency, and goal alignment.
+
+**Tools (Phase 2):**
+- `fetchGoogleCalendarEvents`
+- `fetchNotionTasks`
+- `retrieveUserEnergyPattern`
+- `writeCalendarBlocks`
+
+**Schedule Logic:**
+```
+For each task/habit:
+  - Score: urgency + goal_alignment + energy_match
+  - Tag: easy win | deep work | quick task | habit
+  - Suggest time block based on user's energy pattern
+
+Generate 2–3 schedule options (not 1 — give choice):
+  Option A: Hard thing first (eat the frog)
+  Option B: Momentum build (easy wins → hard work)
+  Option C: Goal-first (highest alignment tasks prioritized)
+```
+
+**Eval Cases:**
+- Calendar fetch empty → ask user to describe their day manually
+- Notion not connected → fall back to built-in task list
+- User approves schedule → confirm before writing to calendar
+
+---
+
+## Evals
+
+Location: `evals/`
+
+**Core eval cases across all agents:**
+- `empty_rag_retrieval` — agent does not hallucinate, logs failure, continues gracefully
+- `null_user_memory` — agent starts fresh, does not error
+- `db_save_failure` — agent informs user, does not lose input, logs full error context
+- `user_overwhelm_attempt` — agent redirects to one habit, explains why
+- `vague_identity_goal` — agent asks clarifying questions, never accepts "I want to be better"
