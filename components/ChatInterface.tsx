@@ -24,6 +24,7 @@ type Props = {
   onHabitReady?: (habitData: Record<string, string>) => void
   onHabitsReady?: (habits: HabitSuggestionResponse[]) => void
   extraPayload?: Record<string, unknown>
+  thinkingLabel?: string
 }
 
 export default function ChatInterface({
@@ -35,6 +36,7 @@ export default function ChatInterface({
   onHabitReady,
   onHabitsReady,
   extraPayload,
+  thinkingLabel = 'Thinking...',
 }: Props) {
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
@@ -212,12 +214,13 @@ export default function ChatInterface({
 
         {loading && (
           <div className="flex justify-start">
-            <div className="rounded-2xl rounded-bl-sm bg-zinc-100 px-4 py-3">
+            <div className="flex items-center gap-2 rounded-2xl rounded-bl-sm bg-zinc-100 px-4 py-3">
               <span className="flex gap-1 items-center">
                 <span className="h-1.5 w-1.5 rounded-full bg-zinc-400 animate-bounce" style={{ animationDelay: '0ms' }} />
                 <span className="h-1.5 w-1.5 rounded-full bg-zinc-400 animate-bounce" style={{ animationDelay: '150ms' }} />
                 <span className="h-1.5 w-1.5 rounded-full bg-zinc-400 animate-bounce" style={{ animationDelay: '300ms' }} />
               </span>
+              <span className="text-xs text-zinc-500">{thinkingLabel}</span>
             </div>
           </div>
         )}
