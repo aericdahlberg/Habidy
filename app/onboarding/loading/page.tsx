@@ -48,7 +48,7 @@ export default function OnboardingLoading() {
   }, [router])
 
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center bg-background px-6 text-center">
+    <div className="flex min-h-screen flex-col items-center justify-center bg-gradient-to-br from-teal-50 to-purple-50 px-6 text-center">
       <motion.img
         src="/mascot.png"
         alt="Habidy mascot"

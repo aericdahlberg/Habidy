@@ -22,7 +22,7 @@ export default function Identity() {
   }
 
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center bg-background px-6">
+    <div className="flex min-h-screen flex-col items-center justify-center bg-gradient-to-br from-teal-50 to-purple-50 px-6">
       <motion.div
         className="w-full max-w-lg"
         initial={{ opacity: 0, y: 30 }}

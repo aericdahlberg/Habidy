@@ -38,25 +38,32 @@ Most tools manage tasks — they don't guide who you're becoming.
 
 ```
 AUTH
-  /login          → Email/password sign in + sign up
+  /login                  → Email/password sign in + sign up
 
-NEW USER FLOW
-  /welcome        → Identity + habits philosophy, CTA to start onboarding
-  /               → Identity input: "I want to be someone who..."
-                    (also accessible via + button on dashboard for new identity)
+NEW USER ONBOARDING (6 screens)
+  /welcome                → Redirect bridge: new_user = false → /onboarding
+  /onboarding             → Welcome screen with mascot + "Get Started"
+  /onboarding/profile     → Name, DOB, gender, address, permissions, T&C
+  /onboarding/philosophy  → Brand story: identity-first habits, 1% better
+  /onboarding/identity    → "How do you describe yourself today and in 1 year?"
+  /onboarding/questionnaire → 3-page survey: focus, day structure, existing habits
+  /onboarding/loading     → Saves data to DB, then redirects to /constellation
 
 AGENTS
-  /constellation  → Identity Gatherer (dynamic investigator)
-  /architect      → Habit builder (outputs 2–3 habit suggestions)
+  /constellation          → Identity Gatherer (also onboarding finale for new users)
+  /architect              → Habit builder (outputs 2–3 habit cards)
 
-CORE APP
-  /dashboard      → Habit cards with identity banners, swipe right/left/up
-  /add-habit      → Proposed habits + generate new suggestions (unlocked at 7-day streak)
-  /explore        → Reflection input + profile context builder
-  /profile        → User profile + sign out
+CORE APP (bottom nav)
+  /dashboard              → Morning greeting, motivational quote, progress bar,
+                            SwipeCheckIn on first visit, habit checklist + streak
+  /explore                → Floating bubble categories, Talk to agent CTA,
+                            reflection textarea → POST /api/explore
+  /social                 → Friends' habit completion, friend requests, add by email
+  /profile                → User profile (Supabase data), identity, sign out
+
+UNLOCKED AT STREAK
+  /add-habit              → Proposed habits from Architect (unlocked at 7-day streak)
 ```
-
-Nothing else gets built until auth and the new user flow work end-to-end.
 
 ---
 
@@ -75,12 +82,16 @@ Nothing else gets built until auth and the new user flow work end-to-end.
 ## Tech Stack
 
 - **Framework:** Next.js 16 (App Router) + TypeScript
-- **Styling:** Tailwind CSS 4
+- **Styling:** Tailwind CSS 4 (CSS-first config via `@theme {}` in globals.css)
+- **UI Library:** shadcn/ui (49 components in `components/ui/`) + framer-motion animations
 - **Database:** Supabase (Postgres + Auth + RLS)
 - **AI:** Anthropic Claude API (default: `claude-sonnet-4-6`) — OpenAI also supported
 - **Model switching:** Set `AGENT_MODEL` env var to swap models without code changes
 - **Evals / Tracing:** LangSmith (`langsmith`) — traces every agent call
+- **Fonts:** Nunito (headings) + Quicksand (body) via Google Fonts
 - **Hosting:** Vercel
+
+**No Zustand.** All data comes from Supabase. Temporary onboarding state uses `sessionStorage` only.
 
 ---
 
@@ -102,27 +113,64 @@ Nothing else gets built until auth and the new user flow work end-to-end.
 
 ## Auth Model
 
-- Supabase Auth handles all authentication
-- Session stored via Supabase's built-in cookies
+- Supabase Auth handles all authentication (email/password only)
+- Session stored via Supabase's built-in cookies (`@supabase/ssr`)
 - `user.id` from Supabase session is used everywhere — never localStorage for identity
 - `proxy.ts` at the root protects all routes except `/login`
 - After signup → check `users.new_user`:
-  - `true` → redirect to `/welcome`, then set `new_user = false`
-  - `false` → redirect to `/dashboard`
+  - `true` → redirect to `/welcome` → which immediately redirects to `/onboarding`
+  - `false` + has `identity_statement` → redirect to `/dashboard`
+  - `false` + no `identity_statement` → redirect to `/onboarding`
+
+---
+
+## Components
+
+```
+components/
+├── BottomNav.tsx         5-tab nav: Home / Explore / Coach (mascot) / Social / Profile
+├── ChatInterface.tsx     Reusable chat for Constellation + Architect agents
+├── HabitCard.tsx         Habit display: swipe gestures, survey sheet, streak dots
+├── HabitLimitModal.tsx   Shown when user tries to add a habit past the limit
+├── NavBar.tsx            Old 4-tab nav (kept for reference — BottomNav is now primary)
+├── StreakDots.tsx         7-day dot visualization
+├── SwipeCheckIn.tsx      Framer Motion swipe card stack for daily check-in
+└── ui/                   49 shadcn/ui components (button, card, dialog, etc.)
+
+hooks/
+├── use-mobile.tsx        useIsMobile() breakpoint hook
+└── use-toast.ts          Toast notification hook
+```
 
 ---
 
 ## Coding Conventions
 
-- TypeScript everywhere — no `any` types, ever
+- TypeScript everywhere — avoid `any`, use it only for third-party library compatibility
 - All Claude API calls go through `lib/claude.ts` only — never call the API directly
 - Agent system prompts live in `lib/agents/constellation.ts` and `lib/agents/architect.ts`
 - Log every tool call and its return value — not just errors — via `lib/logger.ts`
 - Assert tool outputs before passing to model: empty = stop, never hallucinate
 - All server-side Supabase calls use `adminClient()` from `lib/supabase.ts` — never the browser client in API routes
 - Browser Supabase client (`supabase`) is for client components only (auth, reads with RLS)
-- Components stay under 100 lines — break up anything larger
+- Add `'use client'` to any component that uses hooks, framer-motion, or browser APIs
 - Env vars in `.env` only, never hardcoded
+
+---
+
+## Color Scheme
+
+- **Base:** off-white `#F7F7F7` (`--background: 0 0% 97%`)
+- **Cards:** pure white (`--card: 0 0% 100%`)
+- **Primary accent:** teal (`--primary: 168 72% 48%`)
+- **Secondary accent:** purple (`--secondary: 270 80% 65%`)
+- **Muted:** light gray `#ECEEF2` (`--muted: 220 14% 93%`)
+- **Screen gradients:**
+  - Onboarding: `from-teal-50 to-purple-50`
+  - Constellation: `from-teal-50 to-white`
+  - Architect: `from-purple-50 to-white`
+  - Welcome: `from-amber-50 via-white to-teal-50`
+  - Dashboard / Explore / Social / Profile: flat `#F7F7F7`
 
 ---
 
@@ -142,12 +190,12 @@ Nothing else gets built until auth and the new user flow work end-to-end.
 - ❌ Google Calendar / Notion integration
 - ❌ RAG / vector database
 - ❌ Analytics / Insights page
-- ❌ Social / friend streaks
 - ❌ Push notifications / widgets
 - ❌ App blocking
 - ❌ OKR tracking
 - ❌ Morning ritual screen
 - ❌ Google OAuth (email/password only for now)
+- ❌ Communities / group challenges (social screen shows it as "coming soon")
 
 ---
 

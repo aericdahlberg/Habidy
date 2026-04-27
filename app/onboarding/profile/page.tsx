@@ -72,7 +72,7 @@ export default function ProfileSetup() {
   }
 
   return (
-    <div className="flex min-h-screen flex-col bg-background px-6 pb-10 pt-14">
+    <div className="flex min-h-screen flex-col bg-gradient-to-br from-teal-50 to-purple-50 px-6 pb-10 pt-14">
       <motion.div
         className="mx-auto w-full max-w-lg"
         initial={{ opacity: 0, y: 24 }}

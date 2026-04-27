@@ -133,7 +133,7 @@ export default function Questionnaire() {
   }
 
   return (
-    <div className="flex min-h-screen flex-col bg-background px-6 py-8">
+    <div className="flex min-h-screen flex-col bg-gradient-to-br from-teal-50 to-purple-50 px-6 py-8">
       <div className="mx-auto flex w-full max-w-lg flex-1 flex-col">
         <div className="flex items-center gap-3">
           <div className="flex flex-1 gap-2">

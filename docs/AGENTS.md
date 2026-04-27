@@ -2,6 +2,7 @@
 
 All agents live in `lib/agents/`. All call the API through `lib/claude.ts`.
 All are logged via `lib/logger.ts`. All assert on outputs before using them.
+All agent routes are wrapped with LangSmith `traceable()` from `lib/langsmith.ts`.
 
 ---
 
@@ -12,7 +13,7 @@ All are logged via `lib/logger.ts`. All assert on outputs before using them.
 2. Assert before passing anything to the model:
    - DB query null → stop, return graceful fallback message
    - User context empty → ask the user, never invent
-3. Cap conversation at 10 turns → summarize and hand off
+3. Cap conversation turns → summarize and hand off
 4. Never invent user data. If you don't have it, ask.
 5. One question per message. No exceptions.
 6. Run eval sets on every deploy (see evals/ directory)
@@ -26,7 +27,15 @@ All are logged via `lib/logger.ts`. All assert on outputs before using them.
 **Route:** `/api/agents/constellation`
 **Page:** `/constellation`
 **DB agent key:** `identity-gatherer`
+**Background:** `bg-gradient-to-b from-teal-50 to-white`
+
 **Persona:** A warm, knowledgeable guide — like a brilliant friend who understands the psychology of behavior change and genuinely wants to understand you before giving advice.
+
+### Two Entry Points
+
+1. **Onboarding finale** — new users arrive here directly from `/onboarding/loading` after completing the 6-screen onboarding. Their identity statement, questionnaire answers, and profile are already saved. The agent greets them, digs deeper, and hands off to Architect.
+
+2. **Ongoing access** — the Coach tab in BottomNav always links here. Returning users can reflect, revisit their identity, or prep for a new habit build.
 
 ### Purpose
 Investigate the user's identity, motivations, environment, and life context to gather everything Architect needs to build the right habit. The Identity Gatherer does not suggest habits — that is Architect's job.
@@ -66,7 +75,7 @@ When enough info is gathered (turns 6–10) or max turns hit:
 - End with: "Ready to build your first habit around this?"
 
 ### Data Flow
-- **Reads:** `identity_statement` from `users` table, `user_profile_context.summary` via `getProfileContext()`
+- **Reads:** `identity_statement` from `users` table, `user_profile_context.summary` via `getProfileContext()`, optionally questionnaire data embedded in the system prompt
 - **Writes:** One row to `conversation_memory` with `agent = 'identity-gatherer'`
   ```json
   {
@@ -92,6 +101,8 @@ IDENTITY_GATHERER_SUMMARY:{"who_they_want_to_be":"...","actions_that_person_take
 **File:** `lib/agents/architect.ts`
 **Route:** `/api/agents/architect`
 **Page:** `/architect`
+**Background:** `bg-gradient-to-b from-purple-50 to-white`
+
 **Persona:** Patient, structured, encouraging. Knows the Atomic Habits system cold.
 
 ### Purpose
@@ -108,7 +119,7 @@ For each habit, output:
 - `cue`: "After X, I will Y at Z"
 - `two_minute_version`: smallest possible start
 - `category`: one of the 6 goal categories
-- `color`: matching the category color
+- `proposedId`: nullable string for previously proposed habits
 
 ### The Build Flow (follow in order, conversationally)
 ```
@@ -121,11 +132,12 @@ Step 6 — OUTPUT       HABITS_READY JSON
 ```
 
 ### HABITS_READY Detection
-When `HABITS_READY:` is detected:
+When `HABITS_READY:` is detected in the agent response:
 - Parse the JSON array
-- Replace chat panel with habit selection screen (2–3 habit cards)
-- User selects which to activate
-- "Start these habits →" saves via `POST /api/habits`
+- Replace chat panel with habit selection screen (2–3 Lovable-styled habit cards)
+- Cards are pre-selected; user taps to deselect
+- Category-colored borders + backgrounds
+- "Start these N habits →" saves via `POST /api/habits`
 - Routes to `/dashboard` after 1.2s
 
 ### Unselected Habits
@@ -140,17 +152,19 @@ Saved to `proposed_habits` with `selected = false`. Surfaces in `/add-habit` aft
 
 ---
 
-## Agent 3: Explore (Reflection)
+## Agent 3: Explore (Reflection Summarizer)
 
 **Not a conversational agent** — one-shot summarizer called from `/api/explore`.
 
 ### Behavior
-1. Receives new free-text reflection from user
+1. Receives new free-text reflection from user (from `/explore` page or survey sheet)
 2. Reads all past reflections from `user_reflections`
 3. Generates a concise updated profile summary
 4. Saves to `user_profile_context.summary`
 
 Read by Identity Gatherer and Architect via `getProfileContext(userId)`.
+
+Also triggered automatically after habit survey responses (swipe up on HabitCard).
 
 ---
 
@@ -160,22 +174,33 @@ Read by Identity Gatherer and Architect via `getProfileContext(userId)`.
 // lib/supabase.ts
 export async function getProfileContext(userId: string): Promise<string | null>
 // Reads user_profile_context.summary — returns null if not found
+// Called by both constellation and architect system prompt builders
 ```
 
 ---
 
-## Category → Color Mapping
+## Category → Style Mapping
+
+Defined in `HabitCard.tsx` and `ArchitectPage`:
 
 ```typescript
-const CATEGORY_COLORS: Record<string, string> = {
-  'Health & Fitness':    '#4ADE80',  // green
-  'Career & Learning':   '#60A5FA',  // blue
-  'Relationships':       '#F472B6',  // pink
-  'Creativity':          '#A78BFA',  // purple
-  'Mindset & Energy':    '#FBBF24',  // amber
-  'Something else':      '#94A3B8',  // slate
+const CATEGORY_STYLES = {
+  'Health & Fitness':  { bar: 'bg-emerald-500', border: 'border-primary/30',   bg: 'bg-primary/10',   label: 'text-primary'   },
+  'Career & Learning': { bar: 'bg-blue-500',    border: 'border-secondary/30', bg: 'bg-secondary/10', label: 'text-secondary' },
+  'Relationships':     { bar: 'bg-pink-500',    border: 'border-accent/30',    bg: 'bg-accent/10',    label: 'text-accent'    },
+  'Creativity':        { bar: 'bg-violet-500',  border: 'border-secondary/30', bg: 'bg-secondary/10', label: 'text-secondary' },
+  'Mindset & Energy':  { bar: 'bg-amber-500',   border: 'border-primary/30',   bg: 'bg-primary/10',   label: 'text-primary'   },
+  'Something else':    { bar: 'bg-zinc-400',    border: 'border-border',       bg: 'bg-muted',        label: 'text-muted-foreground' },
 }
 ```
+
+---
+
+## LangSmith Tracing
+
+All agent routes are wrapped with `traceable()` from `lib/langsmith.ts`.
+Set `LANGCHAIN_TRACING_V2=true` + `LANGCHAIN_API_KEY` to enable.
+Project name controlled by `LANGCHAIN_PROJECT` env var.
 
 ---
 
@@ -190,60 +215,19 @@ const CATEGORY_COLORS: Record<string, string> = {
 **The Break Flow:**
 ```
 Step 1 — NAME IT (without judgment)
-  "What's the habit you want to understand?"
-  Normalize: "Almost everyone has habits they'd like to change."
-
-Step 2 — FIND THE CUE
-  "When does this usually happen? Time of day? Situation? Emotion?"
-  "What were you feeling right before you did it last time?"
-
-Step 3 — FIND THE CRAVING
-  "What does this habit give you? Relief? Distraction? Connection?"
-  "It's serving some need — what need?"
-
-Step 4 — SHOW THE TRAJECTORY
-  Use log data if available. Be honest but compassionate.
-  "Habits don't just affect your day — they change your trajectory."
-
-Step 5 — REPLACEMENT
-  "What else could meet that same need?"
-  Optionally hand off to Architect to build the replacement habit.
+Step 2 — FIND THE CUE (time, situation, emotion)
+Step 3 — FIND THE CRAVING (what need does it serve?)
+Step 4 — SHOW THE TRAJECTORY (log data if available)
+Step 5 — REPLACEMENT (hand off to Architect for replacement habit)
 ```
-
-**Eval Cases:**
-- User is self-critical → redirect to curiosity, not shame
-- No habit log data → proceed with questions only, no data references
-- User can't identify the cue → offer list of common cue categories
 
 ---
 
 ### Agent 5: Navigator ("The Daily Planner") — Phase 2
 
-**Purpose:** Pulls tasks and habits, then recommends a time-blocked daily schedule based on energy levels, urgency, and goal alignment.
+**Purpose:** Pulls tasks and habits, recommends a time-blocked daily schedule based on energy levels, urgency, and goal alignment.
 
-**Tools (Phase 2):**
-- `fetchGoogleCalendarEvents`
-- `fetchNotionTasks`
-- `retrieveUserEnergyPattern`
-- `writeCalendarBlocks`
-
-**Schedule Logic:**
-```
-For each task/habit:
-  - Score: urgency + goal_alignment + energy_match
-  - Tag: easy win | deep work | quick task | habit
-  - Suggest time block based on user's energy pattern
-
-Generate 2–3 schedule options (not 1 — give choice):
-  Option A: Hard thing first (eat the frog)
-  Option B: Momentum build (easy wins → hard work)
-  Option C: Goal-first (highest alignment tasks prioritized)
-```
-
-**Eval Cases:**
-- Calendar fetch empty → ask user to describe their day manually
-- Notion not connected → fall back to built-in task list
-- User approves schedule → confirm before writing to calendar
+**Tools (Phase 2):** `fetchGoogleCalendarEvents`, `fetchNotionTasks`, `writeCalendarBlocks`
 
 ---
 

@@ -13,7 +13,7 @@ export default function Philosophy() {
   const router = useRouter()
 
   return (
-    <div className="min-h-screen bg-background px-6 pb-12 pt-12">
+    <div className="min-h-screen bg-gradient-to-br from-teal-50 to-purple-50 px-6 pb-12 pt-12">
       <div className="mx-auto flex max-w-md flex-col gap-10">
         <motion.div {...fadeUp(0.05)} className="space-y-3">
           <h1 className="font-heading text-4xl font-black leading-tight tracking-tight text-foreground sm:text-5xl">

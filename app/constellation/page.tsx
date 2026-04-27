@@ -21,7 +21,7 @@ export default function IdentityGathererPage() {
   }
 
   return (
-    <div className="flex h-screen flex-col bg-background">
+    <div className="flex h-screen flex-col bg-gradient-to-b from-teal-50 to-white">
       {/* Header — Lovable Coach style */}
       <header className="flex shrink-0 items-center gap-3 border-b border-border bg-card/80 px-5 pt-12 pb-4 backdrop-blur-sm">
         <img src="/mascot.png" alt="Coach" className="h-10 w-10 rounded-full object-contain" />

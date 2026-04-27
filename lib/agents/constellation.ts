@@ -43,8 +43,8 @@ When you're ready to close (enough info gathered, or approaching turn 10), write
 - What kind of habit would fit their life based on everything shared
 Then end with: "Ready to build your first habit around this?"
 
-After the recap message, on a NEW LINE output the summary marker:
-IDENTITY_GATHERER_SUMMARY:{"who_they_want_to_be":"...","actions_that_person_takes":"...","what_makes_it_attractive":"...","environment":"...","cue":"...","two_minute_version":"..."}
+After the recap message, on a NEW LINE output the summary marker with ALL fields — these go straight to Architect:
+IDENTITY_GATHERER_SUMMARY:{"who_they_want_to_be":"...","actions_that_person_takes":"...","what_makes_it_attractive":"...","environment":"...","cue":"...","two_minute_version":"...","barriers":"...","energy_level":"...","existing_behaviors":"..."}
 
 Every field must be filled. Quote the user's own words where possible. The JSON must be valid and on a single line. No markdown, no code fences around the JSON.`
 }
@@ -60,13 +60,24 @@ export function buildForcedSummaryPrompt(ctx: ForcedSummaryContext): string {
     .map((m) => `${m.role === 'user' ? ctx.userName : 'Identity Gatherer'}: ${m.content}`)
     .join('\n')
 
-  return `You just had a conversation gathering habit-building information from ${ctx.userName}.
+  return `You just had a habit-investigation conversation with ${ctx.userName}.
 Their identity statement: "${ctx.identityStatement}"
 
 Conversation transcript:
 ${transcript}
 
-Based on this, extract or infer all six habit-building fields.
-Output ONLY the raw JSON object below — no markdown, no code fences, no explanation, nothing else:
-{"who_they_want_to_be":"...","actions_that_person_takes":"...","what_makes_it_attractive":"...","environment":"...","cue":"...","two_minute_version":"..."}`
+Extract everything useful from this conversation for the Architect agent. Infer from context if the user didn't state something explicitly.
+Output ONLY the raw JSON object — no markdown, no code fences, no explanation, nothing else:
+{
+  "who_they_want_to_be": "who they want to become — deeper than identity statement",
+  "actions_that_person_takes": "what that version of them actually does regularly",
+  "what_makes_it_attractive": "what would make this meaningful or enjoyable for THIS person",
+  "environment": "their space, schedule, surroundings — what helps or gets in the way",
+  "cue": "the specific trigger found — 'After I [existing routine], I will [new habit] at [place/time]'",
+  "two_minute_version": "the smallest possible starting version — under 2 minutes",
+  "barriers": "the main thing(s) that have gotten in their way before",
+  "energy_level": "when they have most energy or are most likely to stick to something",
+  "existing_behaviors": "habits they already do automatically every day"
+}
+All fields required. Quote the user's own words where possible. Single-line JSON, no newlines inside.`
 }

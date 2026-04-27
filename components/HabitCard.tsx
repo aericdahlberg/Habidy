@@ -31,7 +31,7 @@ const CATEGORY_STYLES: Record<string, { bar: string; bannerBg: string; bannerTex
   'Relationships':     { bar: 'bg-pink-500',    bannerBg: 'bg-pink-50',     bannerText: 'text-pink-700'    },
   'Creativity':        { bar: 'bg-violet-500',  bannerBg: 'bg-violet-50',   bannerText: 'text-violet-700'  },
   'Mindset & Energy':  { bar: 'bg-amber-500',   bannerBg: 'bg-amber-50',    bannerText: 'text-amber-700'   },
-  'Something else':    { bar: 'bg-zinc-500',    bannerBg: 'bg-zinc-50',     bannerText: 'text-zinc-600'    },
+  'Something else':    { bar: 'bg-zinc-400',    bannerBg: 'bg-muted',       bannerText: 'text-muted-foreground' },
 }
 
 function categoryStyle(cat: string | null) {
@@ -187,8 +187,8 @@ export default function HabitCard({ habit, streak, last7, todayLogged, todayComp
             {todayLogged ? (
               <div className={`flex flex-1 items-center justify-center rounded-2xl py-3.5 text-sm font-medium ${
                 todayCompleted
-                  ? 'bg-zinc-900 text-white'
-                  : 'bg-zinc-100 text-zinc-500'
+                  ? 'bg-primary text-primary-foreground'
+                  : 'bg-muted text-muted-foreground'
               }`}>
                 {todayCompleted ? '✓ Done today' : '✗ Skipped'}
               </div>
@@ -197,14 +197,14 @@ export default function HabitCard({ habit, streak, last7, todayLogged, todayComp
                 <button
                   onClick={() => handleLog(true)}
                   disabled={logging}
-                  className="flex flex-1 items-center justify-center gap-2 rounded-2xl bg-zinc-900 py-3.5 text-sm font-medium text-white transition-opacity disabled:opacity-50"
+                  className="flex flex-1 items-center justify-center gap-2 rounded-2xl bg-primary py-3.5 text-sm font-medium text-primary-foreground transition-opacity disabled:opacity-50"
                 >
                   ✓ Done today
                 </button>
                 <button
                   onClick={() => handleLog(false)}
                   disabled={logging}
-                  className="flex flex-1 items-center justify-center gap-2 rounded-2xl bg-zinc-100 py-3.5 text-sm font-medium text-zinc-600 transition-opacity disabled:opacity-50"
+                  className="flex flex-1 items-center justify-center gap-2 rounded-2xl bg-muted py-3.5 text-sm font-medium text-foreground transition-opacity disabled:opacity-50"
                 >
                   ✗ Skip
                 </button>
@@ -215,7 +215,7 @@ export default function HabitCard({ habit, streak, last7, todayLogged, todayComp
 
         {/* Toast */}
         {toast && (
-          <div className="absolute inset-x-0 bottom-0 rounded-b-3xl bg-zinc-900 px-6 py-3 text-center text-sm text-white transition-all">
+          <div className="absolute inset-x-0 bottom-0 rounded-b-3xl bg-foreground px-6 py-3 text-center text-sm text-background transition-all">
             {toast}
           </div>
         )}
@@ -233,37 +233,37 @@ export default function HabitCard({ habit, streak, last7, todayLogged, todayComp
           {/* Sheet */}
           <div className="relative w-full rounded-t-3xl bg-white px-5 pt-5 pb-10 space-y-5 shadow-xl">
             {/* Handle */}
-            <div className="mx-auto h-1 w-10 rounded-full bg-zinc-200" />
+            <div className="mx-auto h-1 w-10 rounded-full bg-border" />
 
-            <h2 className="text-base font-semibold text-zinc-900">Quick reflection</h2>
+            <h2 className="font-heading text-base font-bold text-foreground">Quick reflection</h2>
 
             {/* Q1 */}
             <div className="space-y-1.5">
-              <label className="text-sm font-medium text-zinc-700">What went right?</label>
+              <label className="font-body text-sm font-medium text-foreground">What went right?</label>
               <textarea
                 value={wentRight}
                 onChange={(e) => setWentRight(e.target.value)}
                 placeholder="Optional..."
                 rows={2}
-                className="w-full resize-none rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-2.5 text-sm text-zinc-900 placeholder-zinc-400 outline-none focus:border-zinc-400"
+                className="w-full resize-none rounded-2xl border border-border bg-muted/50 px-4 py-2.5 font-body text-sm text-foreground placeholder:text-muted-foreground outline-none focus:border-primary/40"
               />
             </div>
 
             {/* Q2 */}
             <div className="space-y-1.5">
-              <label className="text-sm font-medium text-zinc-700">What went wrong?</label>
+              <label className="font-body text-sm font-medium text-foreground">What went wrong?</label>
               <textarea
                 value={wentWrong}
                 onChange={(e) => setWentWrong(e.target.value)}
                 placeholder="Optional..."
                 rows={2}
-                className="w-full resize-none rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-2.5 text-sm text-zinc-900 placeholder-zinc-400 outline-none focus:border-zinc-400"
+                className="w-full resize-none rounded-2xl border border-border bg-muted/50 px-4 py-2.5 font-body text-sm text-foreground placeholder:text-muted-foreground outline-none focus:border-primary/40"
               />
             </div>
 
             {/* Q3 */}
             <div className="space-y-2">
-              <label className="text-sm font-medium text-zinc-700">
+              <label className="font-body text-sm font-medium text-foreground">
                 Did you do the full thing, part of it, or none?
               </label>
               <div className="flex gap-2">
@@ -271,10 +271,10 @@ export default function HabitCard({ habit, streak, last7, todayLogged, todayComp
                   <button
                     key={level}
                     onClick={() => setCompletionLevel(level)}
-                    className={`flex-1 rounded-2xl py-2.5 text-sm font-medium transition-colors capitalize ${
+                    className={`flex-1 rounded-2xl py-2.5 font-heading text-sm font-bold transition-colors capitalize ${
                       completionLevel === level
-                        ? 'bg-zinc-900 text-white'
-                        : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200'
+                        ? 'bg-primary text-primary-foreground'
+                        : 'bg-muted text-foreground hover:bg-muted/80'
                     }`}
                   >
                     {level === 'partial' ? 'Part of it' : level.charAt(0).toUpperCase() + level.slice(1)}
@@ -286,7 +286,7 @@ export default function HabitCard({ habit, streak, last7, todayLogged, todayComp
             <button
               onClick={handleSurveySubmit}
               disabled={!completionLevel || surveySubmitting}
-              className="w-full rounded-2xl bg-zinc-900 py-3.5 text-sm font-medium text-white transition-opacity disabled:opacity-30"
+              className="w-full rounded-2xl bg-primary py-3.5 font-heading text-sm font-bold text-primary-foreground transition-opacity disabled:opacity-30"
             >
               {surveySubmitting ? 'Saving...' : 'Save reflection'}
             </button>

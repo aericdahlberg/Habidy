@@ -32,7 +32,7 @@ export default function WelcomePage() {
   }, [router])
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background">
+    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-amber-50 via-white to-teal-50">
       <div className="flex gap-2">
         {[0, 1, 2].map((i) => (
           <div

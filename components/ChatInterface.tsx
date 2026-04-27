@@ -185,7 +185,7 @@ export default function ChatInterface({
         <div className={`flex-shrink-0 px-4 py-2 text-center text-xs transition-colors ${
           turnsRemaining <= 2
             ? 'bg-amber-50 text-amber-700'
-            : 'bg-zinc-50 text-zinc-500'
+            : 'bg-muted/60 text-muted-foreground'
         }`}>
           {turnsRemaining === 1
             ? 'Last exchange — wrapping up'
@@ -203,8 +203,8 @@ export default function ChatInterface({
             <div
               className={`max-w-[82%] rounded-2xl px-4 py-3 text-sm leading-relaxed ${
                 msg.role === 'user'
-                  ? 'bg-zinc-900 text-white rounded-br-sm'
-                  : 'bg-zinc-100 text-zinc-900 rounded-bl-sm'
+                  ? 'bg-primary text-primary-foreground rounded-br-sm'
+                  : 'bg-white border border-border text-foreground rounded-bl-sm shadow-sm'
               }`}
             >
               {msg.content}
@@ -214,13 +214,13 @@ export default function ChatInterface({
 
         {loading && (
           <div className="flex justify-start">
-            <div className="flex items-center gap-2 rounded-2xl rounded-bl-sm bg-zinc-100 px-4 py-3">
+            <div className="flex items-center gap-2 rounded-2xl rounded-bl-sm bg-white border border-border px-4 py-3 shadow-sm">
               <span className="flex gap-1 items-center">
-                <span className="h-1.5 w-1.5 rounded-full bg-zinc-400 animate-bounce" style={{ animationDelay: '0ms' }} />
-                <span className="h-1.5 w-1.5 rounded-full bg-zinc-400 animate-bounce" style={{ animationDelay: '150ms' }} />
-                <span className="h-1.5 w-1.5 rounded-full bg-zinc-400 animate-bounce" style={{ animationDelay: '300ms' }} />
+                <span className="h-1.5 w-1.5 rounded-full bg-primary/50 animate-bounce" style={{ animationDelay: '0ms' }} />
+                <span className="h-1.5 w-1.5 rounded-full bg-primary/50 animate-bounce" style={{ animationDelay: '150ms' }} />
+                <span className="h-1.5 w-1.5 rounded-full bg-primary/50 animate-bounce" style={{ animationDelay: '300ms' }} />
               </span>
-              <span className="text-xs text-zinc-500">{thinkingLabel}</span>
+              <span className="text-xs text-muted-foreground">{thinkingLabel}</span>
             </div>
           </div>
         )}
@@ -230,7 +230,7 @@ export default function ChatInterface({
           <div className="flex justify-center pt-2">
             <button
               onClick={onHandoff}
-              className="rounded-2xl bg-zinc-900 px-6 py-3 text-sm font-medium text-white shadow-sm transition-opacity hover:opacity-90"
+              className="rounded-2xl bg-primary px-6 py-3 text-sm font-medium text-primary-foreground shadow-sm transition-opacity hover:opacity-90"
             >
               {handoffLabel}
             </button>
@@ -243,14 +243,14 @@ export default function ChatInterface({
             {onHandoff && (
               <button
                 onClick={onHandoff}
-                className="rounded-2xl bg-zinc-900 px-6 py-3 text-sm font-medium text-white shadow-sm transition-opacity hover:opacity-90"
+                className="rounded-2xl bg-primary px-6 py-3 text-sm font-medium text-primary-foreground shadow-sm transition-opacity hover:opacity-90"
               >
                 {handoffLabel}
               </button>
             )}
             <button
               onClick={handleStartFresh}
-              className="text-xs text-zinc-400 underline underline-offset-2 hover:text-zinc-600"
+              className="text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground"
             >
               Start a new conversation
             </button>
@@ -261,14 +261,14 @@ export default function ChatInterface({
       </div>
 
       {/* Input */}
-      <div className="border-t border-zinc-100 px-4 py-3 pb-safe">
+      <div className="border-t border-border bg-white/80 backdrop-blur-sm px-4 py-3 pb-safe">
         {limitReached ? (
-          <p className="text-center text-xs text-zinc-400 py-1">
+          <p className="text-center text-xs text-muted-foreground py-1">
             This conversation has ended.
           </p>
         ) : (
-          <div className={`flex items-center gap-3 rounded-2xl border bg-white px-4 py-2.5 transition-colors ${
-            inputDisabled ? 'border-zinc-100' : 'border-zinc-200'
+          <div className={`flex items-center gap-3 rounded-2xl border bg-white px-4 py-2.5 transition-colors shadow-sm ${
+            inputDisabled ? 'border-border' : 'border-border focus-within:border-primary/40'
           }`}>
             <input
               ref={inputRef}
@@ -278,12 +278,12 @@ export default function ChatInterface({
               onKeyDown={handleKeyDown}
               placeholder={loading ? 'Thinking...' : 'Type a message...'}
               disabled={inputDisabled}
-              className="flex-1 bg-transparent text-sm text-zinc-900 placeholder-zinc-400 outline-none disabled:opacity-40"
+              className="flex-1 bg-transparent text-sm text-foreground placeholder:text-muted-foreground outline-none disabled:opacity-40"
             />
             <button
               onClick={handleSend}
               disabled={inputDisabled || !input.trim()}
-              className="flex h-8 w-8 items-center justify-center rounded-xl bg-zinc-900 text-white transition-opacity disabled:opacity-30"
+              className="flex h-8 w-8 items-center justify-center rounded-xl bg-primary text-primary-foreground transition-opacity disabled:opacity-30"
             >
               <svg className="h-4 w-4 rotate-90" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />

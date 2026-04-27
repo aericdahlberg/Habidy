@@ -218,6 +218,7 @@ async function runArchitect(
     userName: 'Friend',
     identityStatement: identity,
     goalCategory: '',
+    frictionPoint: '',
     timeAvailable: '15 minutes',
     crystalBallSummary: summary,
     profileContext: null,

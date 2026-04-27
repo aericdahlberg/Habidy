@@ -1,252 +1,369 @@
 # SCREENS.md — All Screens
 
-## Screen 1: Onboarding (/)
-
-**Goal:** Earn trust fast, collect just enough to make the AI useful.
-**Time to complete:** Under 3 minutes.
-**Rule:** Max 4 inputs. No walls of text. Every question feels meaningful.
-
-### Flow
-
-```
-Step 1 — Identity (full screen, minimal)
-  Rotating identity card behind the input (reader, athlete, writer, artist)
-  Cards rotate every 2.5s with gradient backgrounds
-  Text input: "I want to be someone who..."
-  Button: "Let's figure it out"
-  Progress dots at top (4 dots, first active)
-
-Step 2 — Focus area
-  "What area of your life matters most right now?"
-  6 cards (one selection):
-    🏃 Health & Fitness
-    💼 Career & Learning
-    🤝 Relationships
-    🎨 Creativity
-    🧠 Mindset & Energy
-    📚 Something else
-
-Step 3 — Friction point
-  "What's one thing you do (or don't do) every day that doesn't match
-   who you want to be?"
-  Text input. Short. This is their friction point.
-  Button: "Continue"
-
-Step 4 — Time reality check
-  "About how much time per day could you give to a new habit?"
-  4 options:
-    ⏱ 5 minutes
-    🕐 15 minutes
-    🕑 30 minutes
-    🕓 1 hour+
-  Selecting one immediately saves and advances.
-```
-
-### Completion screen
-```
-  ✓ (checkmark in black circle)
-  "You're all set."
-  "Let's explore what kind of person you're becoming."
-  Identity statement echoed back in italic
-  Button: "Meet your Insights agent →" → /constellation
-```
-
-### After Onboarding
-Save: `identity_statement`, `goal_category`, `friction_point`, `time_available`
-Also accessible via + button on dashboard (for adding a new identity).
+Design system: Nunito headings, Quicksand body, teal primary, purple secondary.
+Base: off-white `#F7F7F7`. Specific screens have gradient backgrounds (noted below).
 
 ---
 
-## Screen 2: Identity Gatherer (/constellation)
+## Onboarding Flow (6 screens)
 
-**Goal:** Open-ended AI conversation to gather deep context before building a habit.
-**UI:** Full chat interface. Clean. One question at a time.
+All onboarding screens share: `bg-gradient-to-br from-teal-50 to-purple-50`
 
-### What It Does
-- Generates an opening message explaining habit science + identity framing
-- Ends opening with: "So let's start there — who do you want to become?"
-- Asks focused follow-up questions one at a time (2–4 sentences each)
-- Internally working toward: who they want to become, actions, what makes it attractive, environment, cue, two-minute version
-- Generates a 3–4 sentence closing recap, then hands off to Architect
+Onboarding state is held in `sessionStorage` across the 6 screens (keys:
+`habidy_onboarding_profile`, `habidy_onboarding_identity`, `habidy_onboarding_questionnaire`).
+At the Loading screen everything is saved to Supabase via `POST /api/onboarding`, then
+`sessionStorage` is cleared and the user is redirected to `/constellation`.
 
-### Key Rules
-- One question at a time. Always.
-- Never suggest a specific habit — that's Architect's job.
-- 10 turns maximum per session.
-- Turn warning shown to user when few turns remain.
-- Closing recap ends with: "Ready to build your first habit around this?"
-- Handoff button: "Build my habit →" → routes to /architect
+### Screen 1: Welcome (`/onboarding`)
 
-### Persistent Entry
-Accessible from nav any time — not just first session.
-Each session saves a new summary to `conversation_memory`.
+```
+Mascot image (spring animation — scales + slight rotate in)
+"Habidy" in large teal font
+"We're here to help you become the person you know you can be."
+[Get Started] → /onboarding/profile
+```
+
+### Screen 2: Profile Setup (`/onboarding/profile`)
+
+```
+"Let's get to know you"
+Fields:
+  Full Name (required)
+  Date of Birth — DD / MM / YYYY (three separate number inputs)
+  Gender — dropdown (Male / Female / Non-binary / Prefer not to say)
+  Home Address (optional)
+
+Permissions (shadcn Switch toggles):
+  Push Notifications
+  Data & Analytics Sharing
+
+Terms checkbox (required)
+
+[Continue] → /onboarding/philosophy
+```
+
+Saves to `sessionStorage` on Continue.
+
+### Screen 3: Philosophy (`/onboarding/philosophy`)
+
+```
+"Most people don't fail because they're lazy."
+Explanation of identity-based habits vs goal-based habits
+Card: "There's a version of you that reads every morning..."
+Gradient card: "1% better every day → 37× better in a year."
+Closing: "Be honest — the more real you are, the more this works."
+
+[Let's figure out who you're becoming] → /onboarding/identity
+```
+
+Static screen — no data collected.
+
+### Screen 4: Identity Input (`/onboarding/identity`)
+
+```
+"How would you describe who you are today, and how do you envision
+ yourself evolving over the next year?"
+
+Tall textarea, autoFocus
+Placeholder: "e.g. I'm a college student who procrastinates a lot.
+  In one year, I want to be disciplined, fit, and confident in interviews."
+
+[Continue] → /onboarding/questionnaire   (disabled until text entered)
+```
+
+Saves to `sessionStorage` on Continue.
+
+### Screen 5: Questionnaire (`/onboarding/questionnaire`)
+
+3 sub-screens, each with animated slide transitions. Progress bar at top.
+
+**Sub-screen 1 — Who you are**
+- Focus (#1 priority — single choice, 7 options)
+- Goal clarity (single choice, 3 options)
+- Biggest blockers (multi-choice, up to 2)
+
+**Sub-screen 2 — Your day**
+- When you have most energy (6 time-of-day options)
+- When you're most likely to stick to something (6 options)
+- Sleep amount (5 options)
+- Morning feel (5 options)
+- Stress level (4 options)
+
+**Sub-screen 3 — Your habits**
+- Existing daily habits you do automatically (multi-choice, 9 options)
+- Time of day that feels wasted (6 options)
+- Where you spend most of your time (7 options)
+
+Sticky footer: [Back] + [Continue / Done]
+
+Saves to `sessionStorage` on Done.
+
+### Screen 6: Loading (`/onboarding/loading`)
+
+```
+Animated bouncing mascot
+"Building your path…"
+5 pulsing teal dots
+"Getting ready to meet your Identity Gatherer…"
+```
+
+On mount:
+1. Reads all `sessionStorage` keys
+2. POSTs to `/api/onboarding` (identity_statement, goal_category, friction_point,
+   time_available, profile_name, email, questionnaire)
+3. Clears sessionStorage
+4. After 2.5s → router.replace('/constellation')
 
 ---
 
-## Screen 3: Architect (/architect)
+## Screen: Identity Gatherer (`/constellation`)
 
-**Goal:** Build 2–3 identity-based habits using the Atomic Habits framework.
-**UI:** Full chat interface, then habit selection screen when HABITS_READY detected.
+Background: `bg-gradient-to-b from-teal-50 to-white`
 
-### Chat Phase
-- Reads Identity Gatherer summary from conversation_memory
-- Reads user profile context
-- Asks clarifying questions to refine habit design
-- 20 turns maximum
-
-### Habit Selection Screen (replaces chat when HABITS_READY detected)
-```
-  2–3 habit cards displayed vertically
-
-  Each card:
-  ┌──────────────────────────────────────┐
-  │ [category color accent bar, left]    │
-  │ I am a daily writer                  │  ← identity_label
-  │ Kitchen Table Wind-Down              │  ← habit_name
-  │ After I brush my teeth, I will...    │  ← cue
-  │ Start with: Write 2 lines            │  ← two_minute_version
-  │ [ ] checkbox (selected state)        │
-  └──────────────────────────────────────┘
-
-  "Start these habits →" button
-  (saves selected, marks unselected as proposed_habits, routes to /dashboard)
-```
-
-### Key Rules
-- Always generates 2–3 options — never just 1
-- Unselected habits saved to `proposed_habits` for /add-habit
-- Cue must follow "After X, I will Y at Z" format — agent doesn't advance without it
-- Routes to /dashboard after 1.2s delay
-
----
-
-## Screen 4: Dashboard (/dashboard)
-
-**Goal:** Make logging a habit take under 3 seconds. Show the streak. Show the why.
-
-### Layout
+**Role:** Onboarding finale for new users. Ongoing coach for returning users.
 
 ```
 Header:
-  "Good [morning/afternoon/evening]"
-  "You're becoming someone who [identity_statement]"
-  [+] button (top right) → /onboarding to add new identity
+  Mascot image (rounded, 40×40)
+  "Identity Gatherer"
+  "Your habit investigator"
 
-─────────────────────────────────────────
-HABIT CARD (one per habit)
+Chat area (ChatInterface.tsx):
+  Agent message bubbles: white card with border + drop shadow
+  User message bubbles: teal (bg-primary)
+  Typing indicator: three teal pulsing dots
+  Teal send button
+  Input: white, rounded-2xl, focus ring on primary
 
-  [Category color bar, left edge]
-  [Identity banner if set: "I AM A DAILY WRITER"]
-  "Kitchen Table Wind-Down"           ← habit_name
-  "After I brush my teeth, I will..." ← cue
-  ● ● ● ○ ● ● ●  Streak: 5 🔥        ← 7-day dots + streak
-
-  Swipe hint (shown until today is logged):
-  "swipe right to complete · left to skip · up to reflect"
-
-  [ ✓ Done today ]  [ ✗ Skip ]
-─────────────────────────────────────────
-
-Milestone banners (shown when triggered):
-  7-day: "🎉 7-day streak! You're building something real."
-  30-day: "🏆 30 days. Time to level up this habit?"
-
-Quick links:
-  [✦ Reflect  — Chat with Crystal Ball]  [🔨 Build — Refine with Architect]
-
-After 7-day streak on any habit:
-  [+ Add another habit] button → /add-habit
+[Build my habit →] handoff button → /architect
 ```
 
-### Swipe Behavior
-- Swipe right = Done ✓ — POST /api/habits/[id]/log with completed: true
-  Toast: "Vote cast. You're becoming them."
-- Swipe left = Skipped ✗ — POST /api/habits/[id]/log with completed: false
-  Toast: "No streak broken — just paused. Back tomorrow."
-- Swipe up = Opens survey bottom sheet (only before today is logged)
+Rules: 10-turn cap per session. Opening question auto-generated from user context.
+Always accessible from BottomNav Coach tab — not just first time.
 
-### Survey Bottom Sheet (swipe up)
+---
+
+## Screen: Architect (`/architect`)
+
+Background: `bg-gradient-to-b from-purple-50 to-white`
+
 ```
-  ─ (handle)
-  "Quick reflection"
+Header:
+  🔨 emoji in teal circle
+  "Architect"
+  "Building your habits" → "Choose your habits" (after HABITS_READY)
 
-  What went right? [optional textarea]
-  What went wrong? [optional textarea]
-  Did you do the full thing, part of it, or none?
-    [Full]  [Part of it]  [None]
+Phase 1 — Chat (same ChatInterface as constellation)
 
-  [Save reflection] button
-```
-Saves to habit_survey_responses, then POSTs content to /api/explore.
+Phase 2 — Habit selection (replaces chat when HABITS_READY detected)
+  2–3 habit cards, Lovable card design:
 
-### Nav (bottom bar, 4 icons)
-```
-🏠 Home (/dashboard)  ✦ Explore (/explore)  🔨 Build (/architect)  👤 Profile (/profile)
+  ┌──────────────────────────────────────────┐
+  │ I AM A DAILY RUNNER          (label)     │
+  │ Kitchen Table Wind-Down      (name bold) │
+  │ After I brush my teeth...    (cue)       │
+  │ ┌─────────────────────────────┐          │
+  │ │ Start with: Walk to the door│          │
+  │ └─────────────────────────────┘          │
+  │                              [●] check  │
+  └──────────────────────────────────────────┘
+
+  Cards pre-selected. Tap to toggle.
+  Category-colored border + background when selected.
+
+  [Start these N habits →] button → saves via POST /api/habits → /dashboard
 ```
 
 ---
 
-## Screen 5: Add Habit (/add-habit)
+## Screen: Dashboard (`/dashboard`)
 
-**Goal:** Let user activate habits Architect already designed but they didn't select.
-**Unlock:** Only shown after any habit reaches a 7-day streak.
+Background: flat `#F7F7F7`
 
-### Layout
+### First Visit Each Day — SwipeCheckIn
+
+Full-screen swipe experience (replaces entire page content):
+
 ```
-Header: "Add a habit"
-Subtext: "Architect already built these for you" or "Generate new suggestions"
+"Daily Check-in ✨"
+"Did you do it today?"
 
-Proposed habit cards (unselected from previous Architect sessions):
-  Each card shows identity_label, habit_name, cue, two_minute_version
-  [Add] button per card (becomes [Added ✓] after tapping)
+Card stack (3 cards stacked with perspective):
+  Active card: draggable, rotates as dragged
+  Right swipe overlay: teal ✓
+  Left swipe overlay: red ✗
+  "[N] of [total]" label
+  Habit name + description
+  "Swipe right = done · left = not yet"
+
+Manual buttons below: [✗] [✓]
+```
+
+After all cards swiped → logs to `/api/habits/[id]/log` for each habit → shows main dashboard.
+
+### After Check-In — Main Dashboard
+
+```
+Header:
+  "Hey [first name] 👋"          (Nunito, 4xl, black)
+  "Becoming: [identity preview]"  (muted, teal accent)
+  Avatar button (gradient circle with initials) → /profile
+
+Quote card (white, rounded-3xl):
+  Random motivational quote, italic
+
+Progress bar card:
+  "Today's Progress"   [N of total]
+  Gradient bar: teal → teal/70
+
+Today's Habits (checklist):
+  Each row: circle icon | habit_name (identity_label below) | streak 🔥
+  Tap = immediate log (✓ green checked state)
+  Done: teal check icon + teal text + strikethrough
+
+Milestone banners:
+  7-day: "🎉 7-day streak! You're building something real."
+  30-day: "🏆 30 days. Time to level up this habit?"
+
+Quick links (2-up grid):
+  [✦ Reflect — Chat with your coach]  → /constellation
+  [🔨 Build — Refine with Architect]  → /architect
+
+After 7-day streak on any habit:
+  [+ Add another habit] button → /add-habit
+
+FAB (+ button, bottom right above nav):
+  Fixed, teal, spring in → /architect
+```
+
+### Swipe Mechanic (HabitCard)
+
+Still supported via touch events on individual cards in the habit list (swipe up → survey).
+
+| Gesture | Action |
+|---------|--------|
+| Swipe right | Complete — POST /api/habits/[id]/log, toast "Vote cast. You're becoming them." |
+| Swipe left  | Skip — POST /api/habits/[id]/log, toast "No streak broken — just paused." |
+| Swipe up    | Opens reflection survey sheet (before today is logged) |
+| Tap buttons | Done / Skip buttons below each card |
+
+### Survey Bottom Sheet
+
+```
+Handle bar
+"Quick reflection"
+
+What went right? [textarea]
+What went wrong? [textarea]
+Full / Part of it / None   (teal selected, muted unselected)
+
+[Save reflection] → POST /api/habits/survey, then POST /api/explore
+```
+
+---
+
+## Screen: Explore (`/explore`)
+
+Background: flat `#F7F7F7`. Sticky header with backdrop blur.
+
+```
+Sticky header:
+  "Explore"
+  Search input (rounded-full, magnifier icon)
+
+Floating bubble area (320px tall, rounded-3xl card):
+  6 animated bubbles: Exercise, Finance, Dating, Outdoor, Productivity, Mindfulness
+  Bubbles bounce around, collide with walls
+  Tap a bubble → stops it, shows category detail below
+
+Category detail (appears below bubbles on selection):
+  Emoji + category name
+  "Explore [category] habits or talk to your coach..."
+  [Talk to your coach about [category]] → /constellation
+
+Reflection input (always visible):
+  "Share a reflection"
+  Textarea: "What's on your mind about how you work, live, or want to grow?"
+  Character count + [Submit]
+  On submit: POST /api/explore → updates user_profile_context
+  Confirmation: "Got it — this will shape your future habits."
+```
+
+---
+
+## Screen: Social (`/social`)
+
+Background: flat `#F7F7F7`. New in v2.
+
+```
+"Social"
+"Stay accountable together"
+
+[Friend Requests badge — only shown when pending exist]
+  Each request: initials avatar | name + "wants to be accountability partners"
+  [Accept] [Decline] buttons → POST /api/social/friends/respond
+
+[Friends Activity]
+  Each friend: initials/avatar | "N/total habits today"
+  Mini progress bar (teal = all done, purple = partial)
+  Status icon: ✓ green (all done) | clock purple (partial) | circle gray (none)
+  Empty state: "No friends yet" + mascot nudge
+
+[Add a Friend]
+  Email input + send button → POST /api/social/friends/request
+  Inline success: "Request sent to [name]!"
+  Inline error: "No Habidy user found with that email"
+
+[Communities]  (cosmetic, coming soon — dimmed)
+  4 community cards in 2-column grid
+  Join buttons disabled
+```
+
+---
+
+## Screen: Add Habit (`/add-habit`)
+
+Background: flat `#F7F7F7`. **Unlocked after 7-day streak on any habit.**
+
+```
+Header: "Add a habit" | ← Back button
+Subtext: "Architect already built these for you" OR "Generate new suggestions"
+
+Proposed habit cards (from proposed_habits table):
+  Each card: identity_label, habit_name, cue, two_minute_version
+  Category-colored border/bg
+  [Add] button → POST /api/habits → becomes [Added ✓]
 
 If no proposed habits:
   "No saved suggestions"
-  [Generate new suggestions] → /architect
+  "Run Architect again to generate new habit ideas..."
 
-After adding at least one:
-  [Go to dashboard →] button
+If at least one added:
+  [Go to dashboard →]
 
 [Generate new suggestions] → /architect
 ```
 
 ---
 
-## Screen 6: Explore (/explore)
+## Screen: Profile (`/profile`)
 
-**Goal:** Free-form reflection that feeds into the user's growing profile context.
-Every reflection makes the agents smarter about this specific person.
+Background: flat `#F7F7F7`. Lovable card layout with Supabase data.
 
-### Layout
 ```
-Growing textarea:
-  Placeholder: "What's on your mind? How did today go?
-  What's working, what isn't? This is just for you."
+Header: "Profile" | mascot thumbnail
 
-[Save reflection] button
+Avatar circle (gradient teal, large initials)
+Display name (from users.display_name or email prefix)
+Email
 
-Past reflections (below, reverse chronological):
-  Each shows: content + relative timestamp ("2 days ago")
-```
+"About you" card:
+  Name | Email rows with icon + label
 
-### After Saving
-- Saves to `user_reflections`
-- Calls Claude to regenerate `user_profile_context.summary`
-- Both Identity Gatherer and Architect read this on next session
-
----
-
-## Screen 7: Profile (/profile)
-
-**Goal:** Review your identity, see your settings, sign out.
-
-### Layout
-```
-"Profile"
-
-Identity statement (from onboarding)
-Focus area
-Time available
+"Your journey" card:
+  Identity statement (teal sparkle icon, soft teal bg)
+  Active habits count (from habits table)
+  Current focus (from users.goal_category)
 
 [Reset and start over] → clears localStorage, routes to /welcome
 [Sign out] → Supabase signOut(), routes to /login
@@ -254,19 +371,35 @@ Time available
 
 ---
 
-## Welcome Screen (/welcome)
+## BottomNav (5 tabs)
 
-Shown once on first login (new_user = true).
+Fixed at bottom. White `bg-white/95`, `backdrop-blur-md`, subtle `border-t border-zinc-100`.
 
 ```
-Dark hero section:
-  "Every action is a vote for the person you want to become."
-
-Three feature cards:
-  Identity first — habits tied to who you're becoming, not what you should do
-  Built to stick — the 2-minute rule and cue-based design from Atomic Habits
-  Evidence compounds — every log is proof of your identity
-
-[Let's build you →] button → / (onboarding)
+🏠 Home      → /dashboard
+🧭 Explore   → /explore
+[mascot] Coach → /constellation
+👥 Social    → /social
+👤 Profile   → /profile
 ```
-Sets new_user = false after viewing.
+
+Active tab: teal (`text-primary`). Inactive: muted gray. Font size 10px to fit 5 tabs.
+
+---
+
+## Screen: Welcome (`/welcome`)
+
+Background: `bg-gradient-to-br from-amber-50 via-white to-teal-50`
+
+This screen is now a redirect bridge only — shows a loading spinner while it:
+1. Checks `users.new_user` and `users.identity_statement`
+2. Sets `new_user = false`
+3. Routes to `/onboarding` (new users) or `/dashboard` (returning users)
+
+The old philosophy/brand-story content was moved to `/onboarding/philosophy`.
+
+---
+
+## Screen: Login (`/login`)
+
+Standard Supabase Auth UI. Email/password only. No OAuth.
