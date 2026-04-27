@@ -1,80 +1,97 @@
-"use client"
+'use client'
 
-import { useState, useEffect, useRef } from 'react'
-import NavBar from '@/components/NavBar'
+import { useState, useEffect, useRef, useCallback } from 'react'
+import { motion } from 'framer-motion'
+import { useRouter } from 'next/navigation'
+import { Search, MessageCircle } from 'lucide-react'
+import BottomNav from '@/components/BottomNav'
 import { supabase } from '@/lib/supabase'
 
-type Reflection = {
+const CATEGORIES = [
+  { id: 'exercise', name: 'Exercise', emoji: '🏋️', color: 'bg-primary/15 border-primary/30' },
+  { id: 'finance', name: 'Finance', emoji: '💰', color: 'bg-secondary/15 border-secondary/30' },
+  { id: 'dating', name: 'Dating', emoji: '💬', color: 'bg-accent/15 border-accent/30' },
+  { id: 'outdoor', name: 'Outdoor', emoji: '🌿', color: 'bg-primary/15 border-primary/30' },
+  { id: 'productivity', name: 'Productivity', emoji: '🧠', color: 'bg-secondary/15 border-secondary/30' },
+  { id: 'mindfulness', name: 'Mindfulness', emoji: '🧘', color: 'bg-accent/15 border-accent/30' },
+]
+
+interface BubbleState {
   id: string
-  content: string
-  created_at: string
+  x: number
+  y: number
+  vx: number
+  vy: number
 }
 
-function timeAgo(isoString: string): string {
-  const diff = Date.now() - new Date(isoString).getTime()
-  const mins = Math.floor(diff / 60_000)
-  if (mins < 1) return 'just now'
-  if (mins < 60) return `${mins}m ago`
-  const hrs = Math.floor(mins / 60)
-  if (hrs < 24) return `${hrs}h ago`
-  const days = Math.floor(hrs / 24)
-  return `${days}d ago`
-}
+const BUBBLE_SIZE = 100
+const SPEED = 0.6
 
 export default function ExplorePage() {
+  const router = useRouter()
+  const [search, setSearch] = useState('')
   const [userId, setUserId] = useState<string | null>(null)
-  const [reflections, setReflections] = useState<Reflection[]>([])
-  const [input, setInput] = useState('')
+  const [reflection, setReflection] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [confirmed, setConfirmed] = useState(false)
-  const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const containerRef = useRef<HTMLDivElement>(null)
+  const [bubbles, setBubbles] = useState<BubbleState[]>([])
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null)
+  const animRef = useRef<number>(0)
 
-  // Load user + past reflections on mount
   useEffect(() => {
-    async function load() {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) return
-      setUserId(user.id)
-
-      const { data } = await supabase
-        .from('user_reflections')
-        .select('id, content, created_at')
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: false })
-
-      if (data) setReflections(data)
-    }
-    load()
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (user) setUserId(user.id)
+    })
   }, [])
 
-  // Auto-grow textarea
   useEffect(() => {
-    const el = textareaRef.current
-    if (!el) return
-    el.style.height = 'auto'
-    el.style.height = `${el.scrollHeight}px`
-  }, [input])
+    const w = containerRef.current?.clientWidth || 320
+    const h = containerRef.current?.clientHeight || 400
+    const initial = CATEGORIES.map((cat) => ({
+      id: cat.id,
+      x: Math.random() * (w - BUBBLE_SIZE),
+      y: Math.random() * (h - BUBBLE_SIZE),
+      vx: (Math.random() - 0.5) * SPEED * 2,
+      vy: (Math.random() - 0.5) * SPEED * 2,
+    }))
+    setBubbles(initial)
+  }, [])
 
-  async function handleSubmit(e: React.FormEvent) {
+  const animate = useCallback(() => {
+    setBubbles((prev) => {
+      const w = containerRef.current?.clientWidth || 320
+      const h = containerRef.current?.clientHeight || 400
+      return prev.map((b) => {
+        let { x, y, vx, vy } = b
+        x += vx
+        y += vy
+        if (x <= 0 || x >= w - BUBBLE_SIZE) vx = -vx
+        if (y <= 0 || y >= h - BUBBLE_SIZE) vy = -vy
+        x = Math.max(0, Math.min(w - BUBBLE_SIZE, x))
+        y = Math.max(0, Math.min(h - BUBBLE_SIZE, y))
+        return { ...b, x, y, vx, vy }
+      })
+    })
+    animRef.current = requestAnimationFrame(animate)
+  }, [])
+
+  useEffect(() => {
+    animRef.current = requestAnimationFrame(animate)
+    return () => cancelAnimationFrame(animRef.current)
+  }, [animate])
+
+  async function handleReflectionSubmit(e: React.FormEvent) {
     e.preventDefault()
-    if (!input.trim() || !userId || submitting) return
-
+    if (!reflection.trim() || !userId || submitting) return
     setSubmitting(true)
-    setConfirmed(false)
-
     try {
-      const res = await fetch('/api/explore', {
+      await fetch('/api/explore', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId, content: input.trim() }),
+        body: JSON.stringify({ userId, content: reflection.trim() }),
       })
-
-      if (!res.ok) return
-
-      const { reflection } = await res.json() as { reflection: Reflection; summary: string }
-
-      setReflections((prev) => [reflection, ...prev])
-      setInput('')
+      setReflection('')
       setConfirmed(true)
       setTimeout(() => setConfirmed(false), 4000)
     } finally {
@@ -82,84 +99,120 @@ export default function ExplorePage() {
     }
   }
 
+  const filtered = search
+    ? CATEGORIES.filter((c) => c.name.toLowerCase().includes(search.toLowerCase()))
+    : CATEGORIES
+
   return (
-    <div className="flex min-h-screen flex-col bg-zinc-50 pb-24">
+    <div className="flex min-h-screen flex-col bg-background pb-24">
       {/* Header */}
-      <div className="bg-white px-5 pt-12 pb-6">
-        <div className="mx-auto max-w-sm">
-          <h1 className="text-2xl font-semibold text-zinc-900">Explore</h1>
-          <p className="mt-1 text-sm text-zinc-500">
-            Reflect on how you work, live, and want to grow.
-          </p>
+      <header className="sticky top-0 z-30 border-b border-border bg-card/95 px-5 pt-12 pb-4 backdrop-blur-md">
+        <h1 className="font-heading text-2xl font-extrabold text-foreground mb-3">Explore</h1>
+        <div className="relative">
+          <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search habit categories…"
+            className="w-full rounded-full border border-border bg-background py-2.5 pl-10 pr-4 font-body text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+          />
         </div>
+      </header>
+
+      {/* Floating bubble categories */}
+      <div
+        ref={containerRef}
+        className="relative mx-5 mt-4 min-h-[320px] flex-1 overflow-hidden rounded-3xl border border-border bg-card/50"
+        style={{ height: '320px' }}
+      >
+        {filtered.map((cat) => {
+          const bubble = bubbles.find((b) => b.id === cat.id)
+          if (!bubble) return null
+          return (
+            <motion.button
+              key={cat.id}
+              onClick={() => setSelectedCategory(selectedCategory === cat.id ? null : cat.id)}
+              className={`absolute flex flex-col items-center justify-center rounded-full border-2 ${cat.color} transition-shadow hover:shadow-lg`}
+              style={{ width: BUBBLE_SIZE, height: BUBBLE_SIZE, left: bubble.x, top: bubble.y }}
+              whileHover={{ scale: 1.1 }}
+              whileTap={{ scale: 0.95 }}
+            >
+              <span className="text-2xl">{cat.emoji}</span>
+              <span className="font-heading text-[11px] font-bold text-foreground mt-1">{cat.name}</span>
+            </motion.button>
+          )
+        })}
       </div>
 
-      <div className="mx-auto w-full max-w-sm flex-1 px-4 pt-4 space-y-4">
-        {/* Input card */}
-        <div className="rounded-3xl bg-white border border-zinc-100 px-5 py-5">
-          <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+      {/* Selected category detail + Talk to agent CTA */}
+      {selectedCategory && (() => {
+        const cat = CATEGORIES.find((c) => c.id === selectedCategory)
+        if (!cat) return null
+        return (
+          <motion.section
+            className="mx-5 mt-4"
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+          >
+            <div className="rounded-2xl border border-border bg-card p-5">
+              <div className="flex items-center gap-3 mb-3">
+                <span className="text-3xl">{cat.emoji}</span>
+                <h2 className="font-heading text-xl font-extrabold text-foreground">{cat.name}</h2>
+              </div>
+              <p className="font-body text-sm text-muted-foreground mb-4">
+                Explore {cat.name.toLowerCase()} habits or talk to your coach to build something that fits your life.
+              </p>
+              <button
+                onClick={() => router.push('/constellation')}
+                className="flex w-full items-center justify-center gap-2 rounded-full bg-primary px-6 py-3 font-heading text-sm font-bold text-primary-foreground shadow-lg transition-transform hover:scale-105 active:scale-95"
+              >
+                <MessageCircle size={16} />
+                Talk to your coach about {cat.name.toLowerCase()}
+              </button>
+            </div>
+          </motion.section>
+        )
+      })()}
+
+      {/* Reflection input — feeds /api/explore */}
+      <section className="mx-5 mt-4">
+        <div className="rounded-2xl border border-border bg-card p-5">
+          <h3 className="font-heading text-sm font-bold text-foreground mb-2">Share a reflection</h3>
+          <form onSubmit={handleReflectionSubmit} className="flex flex-col gap-3">
             <textarea
-              ref={textareaRef}
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) handleSubmit(e as unknown as React.FormEvent)
-              }}
+              value={reflection}
+              onChange={(e) => setReflection(e.target.value)}
               placeholder="What's on your mind about how you work, live, or want to grow?"
               rows={3}
               disabled={submitting}
-              className="w-full resize-none bg-transparent text-sm leading-relaxed text-zinc-900 placeholder-zinc-400 outline-none disabled:opacity-50"
+              className="w-full resize-none rounded-xl border border-border bg-background px-4 py-3 font-body text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary disabled:opacity-50"
             />
             <div className="flex items-center justify-between">
-              <span className="text-xs text-zinc-400">
-                {input.length > 0 && `${input.length} chars · ⌘↵ to submit`}
+              <span className="font-body text-xs text-muted-foreground">
+                {reflection.length > 0 && `${reflection.length} chars`}
               </span>
               <button
                 type="submit"
-                disabled={!input.trim() || submitting}
-                className="rounded-xl bg-zinc-900 px-4 py-2 text-sm font-medium text-white transition-opacity disabled:opacity-30"
+                disabled={!reflection.trim() || submitting || !userId}
+                className="rounded-full bg-primary px-5 py-2 font-heading text-sm font-bold text-primary-foreground disabled:opacity-30"
               >
-                {submitting ? 'Saving...' : 'Submit'}
+                {submitting ? 'Saving…' : 'Submit'}
               </button>
             </div>
           </form>
+          {confirmed && (
+            <motion.p
+              className="mt-2 font-body text-xs font-semibold text-primary"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+            >
+              Got it — this will shape your future habits.
+            </motion.p>
+          )}
         </div>
+      </section>
 
-        {/* Confirmation */}
-        {confirmed && (
-          <div className="rounded-2xl bg-zinc-900 px-5 py-4 text-sm text-white">
-            Got it — this will shape your future habits.
-          </div>
-        )}
-
-        {/* Past reflections */}
-        {reflections.length > 0 && (
-          <div className="flex flex-col gap-3">
-            <p className="px-1 text-xs font-medium uppercase tracking-wide text-zinc-400">
-              Past reflections
-            </p>
-            {reflections.map((r) => (
-              <div
-                key={r.id}
-                className="rounded-2xl bg-white border border-zinc-100 px-5 py-4"
-              >
-                <p className="text-sm leading-relaxed text-zinc-800">{r.content}</p>
-                <p className="mt-2 text-xs text-zinc-400">{timeAgo(r.created_at)}</p>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {reflections.length === 0 && !submitting && (
-          <div className="rounded-2xl border border-dashed border-zinc-200 px-6 py-10 text-center">
-            <p className="text-sm text-zinc-400">
-              Your reflections will appear here. The more you share, the better your habits will fit who you actually are.
-            </p>
-          </div>
-        )}
-      </div>
-
-      <NavBar />
+      <BottomNav />
     </div>
   )
 }

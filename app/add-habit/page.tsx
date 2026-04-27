@@ -2,8 +2,10 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import NavBar from '@/components/NavBar'
+import { motion } from 'framer-motion'
+import BottomNav from '@/components/BottomNav'
 import { supabase } from '@/lib/supabase'
+import { cn } from '@/lib/utils'
 
 type ProposedHabit = {
   id: string
@@ -17,12 +19,12 @@ type ProposedHabit = {
 }
 
 const CATEGORY_STYLES: Record<string, { border: string; bg: string; label: string }> = {
-  'Health & Fitness':  { border: 'border-orange-200',  bg: 'bg-orange-50',  label: 'text-orange-600'  },
-  'Career & Learning': { border: 'border-blue-200',    bg: 'bg-blue-50',    label: 'text-blue-600'    },
-  'Relationships':     { border: 'border-pink-200',    bg: 'bg-pink-50',    label: 'text-pink-600'    },
-  'Creativity':        { border: 'border-purple-200',  bg: 'bg-purple-50',  label: 'text-purple-600'  },
-  'Mindset & Energy':  { border: 'border-emerald-200', bg: 'bg-emerald-50', label: 'text-emerald-600' },
-  'Something else':    { border: 'border-zinc-200',    bg: 'bg-zinc-50',    label: 'text-zinc-500'    },
+  'Health & Fitness':  { border: 'border-primary/30',   bg: 'bg-primary/10',   label: 'text-primary'   },
+  'Career & Learning': { border: 'border-secondary/30', bg: 'bg-secondary/10', label: 'text-secondary' },
+  'Relationships':     { border: 'border-accent/30',    bg: 'bg-accent/10',    label: 'text-accent'    },
+  'Creativity':        { border: 'border-secondary/30', bg: 'bg-secondary/10', label: 'text-secondary' },
+  'Mindset & Energy':  { border: 'border-primary/30',   bg: 'bg-primary/10',   label: 'text-primary'   },
+  'Something else':    { border: 'border-border',       bg: 'bg-muted/50',     label: 'text-muted-foreground' },
 }
 
 function categoryStyle(cat: string) {
@@ -33,25 +35,30 @@ export default function AddHabitPage() {
   const router = useRouter()
   const [userId, setUserId] = useState<string | null>(null)
   const [proposed, setProposed] = useState<ProposedHabit[]>([])
-  const [adding, setAdding] = useState<string | null>(null)  // id of habit being added
+  const [adding, setAdding] = useState<string | null>(null)
   const [added, setAdded] = useState<Set<string>>(new Set())
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     async function load() {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) return
-      setUserId(user.id)
+      try {
+        const { data: { user } } = await supabase.auth.getUser()
+        if (!user) return
+        setUserId(user.id)
 
-      const { data } = await supabase
-        .from('proposed_habits')
-        .select('id, habit_data')
-        .eq('user_id', user.id)
-        .eq('selected', false)
-        .order('created_at', { ascending: false })
+        const { data } = await supabase
+          .from('proposed_habits')
+          .select('id, habit_data')
+          .eq('user_id', user.id)
+          .eq('selected', false)
+          .order('created_at', { ascending: false })
 
-      setProposed((data ?? []) as ProposedHabit[])
-      setLoading(false)
+        setProposed((data ?? []) as ProposedHabit[])
+      } catch {
+        // Non-fatal
+      } finally {
+        setLoading(false)
+      }
     }
     load()
   }, [])
@@ -69,106 +76,106 @@ export default function AddHabitPage() {
           selectedProposedIds: [p.id],
         }),
       })
-      if (res.ok) {
-        setAdded((prev) => new Set(prev).add(p.id))
-      }
+      if (res.ok) setAdded((prev) => new Set(prev).add(p.id))
     } finally {
       setAdding(null)
     }
   }
 
   return (
-    <div className="flex min-h-screen flex-col bg-zinc-50 pb-24">
-      {/* Header */}
-      <div className="bg-white border-b border-zinc-100 px-5 pt-12 pb-5">
+    <div className="flex min-h-screen flex-col bg-background pb-24">
+      <header className="border-b border-border bg-card/95 px-5 pt-12 pb-5 backdrop-blur-md">
         <div className="mx-auto max-w-sm flex items-center justify-between">
           <div>
-            <h1 className="text-base font-semibold text-zinc-900">Add a habit</h1>
-            <p className="text-xs text-zinc-400 mt-0.5">
+            <h1 className="font-heading text-lg font-extrabold text-foreground">Add a habit</h1>
+            <p className="font-body text-xs text-muted-foreground mt-0.5">
               {proposed.length > 0 ? 'Architect already built these for you' : 'Generate new suggestions'}
             </p>
           </div>
           <button
             onClick={() => router.back()}
-            className="text-sm text-zinc-400 hover:text-zinc-700"
+            className="font-body text-sm text-muted-foreground hover:text-foreground"
           >
             ← Back
           </button>
         </div>
-      </div>
+      </header>
 
       <div className="mx-auto w-full max-w-sm px-4 pt-5 space-y-3">
-
         {loading ? (
-          <p className="text-center text-sm text-zinc-400 py-8">Loading...</p>
+          <p className="text-center font-body text-sm text-muted-foreground py-8">Loading…</p>
         ) : proposed.length === 0 ? (
-          <div className="rounded-2xl bg-white border border-zinc-100 px-5 py-8 text-center space-y-3">
+          <div className="rounded-2xl border border-border bg-card px-5 py-8 text-center space-y-3">
             <p className="text-3xl">✨</p>
-            <p className="text-sm font-medium text-zinc-900">No saved suggestions</p>
-            <p className="text-sm text-zinc-500 leading-relaxed">
+            <p className="font-heading text-sm font-bold text-foreground">No saved suggestions</p>
+            <p className="font-body text-sm text-muted-foreground leading-relaxed">
               Run Architect again to generate new habit ideas based on where you are now.
             </p>
           </div>
         ) : (
-          proposed.map((p) => {
+          proposed.map((p, idx) => {
             const h = p.habit_data
             const style = categoryStyle(h.category)
             const isAdded = added.has(p.id)
             const isAdding = adding === p.id
 
             return (
-              <div
+              <motion.div
                 key={p.id}
-                className={`rounded-3xl border-2 px-5 py-5 bg-white transition-all ${
-                  isAdded ? 'border-zinc-200 opacity-60' : style.border
-                }`}
+                className={cn(
+                  'rounded-3xl border-2 px-5 py-5 bg-card transition-all',
+                  isAdded ? 'border-border opacity-60' : style.border
+                )}
+                initial={{ opacity: 0, y: 16 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: idx * 0.07 }}
               >
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex-1 min-w-0">
-                    <p className={`text-xs font-semibold uppercase tracking-wide mb-1 ${style.label}`}>
+                    <p className={`font-body text-xs font-semibold uppercase tracking-wide mb-1 ${style.label}`}>
                       {h.identity_label}
                     </p>
-                    <p className="text-base font-semibold text-zinc-900 leading-snug">
+                    <p className="font-heading text-base font-extrabold text-foreground leading-snug">
                       {h.habit_name}
                     </p>
-                    <p className="mt-2 text-sm text-zinc-500 leading-relaxed">{h.cue}</p>
-                    <div className="mt-3 inline-flex items-center gap-1.5 rounded-xl bg-zinc-50 border border-zinc-100 px-3 py-1.5">
-                      <span className="text-xs text-zinc-400">Start with:</span>
-                      <span className="text-xs font-medium text-zinc-700">{h.two_minute_version}</span>
+                    <p className="mt-2 font-body text-sm text-muted-foreground leading-relaxed">{h.cue}</p>
+                    <div className="mt-3 inline-flex items-center gap-1.5 rounded-xl border border-border bg-background/70 px-3 py-1.5">
+                      <span className="font-body text-xs text-muted-foreground">Start with:</span>
+                      <span className="font-body text-xs font-semibold text-foreground">{h.two_minute_version}</span>
                     </div>
                   </div>
 
                   <button
-                    onClick={() => addHabit(p)}
+                    onClick={() => void addHabit(p)}
                     disabled={isAdded || !!adding}
-                    className={`flex-shrink-0 mt-0.5 rounded-2xl px-4 py-2 text-sm font-medium transition-all ${
+                    className={cn(
+                      'shrink-0 mt-0.5 rounded-full px-4 py-2 font-heading text-sm font-bold transition-all',
                       isAdded
-                        ? 'bg-zinc-100 text-zinc-400 cursor-default'
-                        : 'bg-zinc-900 text-white hover:opacity-90 disabled:opacity-40'
-                    }`}
+                        ? 'bg-muted text-muted-foreground cursor-default'
+                        : 'bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-40'
+                    )}
                   >
-                    {isAdded ? 'Added ✓' : isAdding ? '...' : 'Add'}
+                    {isAdded ? 'Added ✓' : isAdding ? '…' : 'Add'}
                   </button>
                 </div>
-              </div>
+              </motion.div>
             )
           })
         )}
 
-        {/* Divider */}
         {!loading && (
           <div className="pt-2 space-y-3">
             {added.size > 0 && (
               <button
                 onClick={() => router.push('/dashboard')}
-                className="w-full rounded-2xl bg-zinc-900 py-3.5 text-sm font-medium text-white"
+                className="w-full rounded-full bg-primary py-4 font-heading text-sm font-bold text-primary-foreground shadow-lg"
               >
                 Go to dashboard →
               </button>
             )}
             <button
               onClick={() => router.push('/architect')}
-              className="w-full rounded-2xl border-2 border-zinc-200 py-3.5 text-sm font-medium text-zinc-700 hover:border-zinc-400 transition-colors"
+              className="w-full rounded-2xl border-2 border-border bg-card py-3.5 font-heading text-sm font-bold text-foreground transition-colors hover:border-primary/40"
             >
               Generate new suggestions
             </button>
@@ -176,7 +183,7 @@ export default function AddHabitPage() {
         )}
       </div>
 
-      <NavBar />
+      <BottomNav />
     </div>
   )
 }

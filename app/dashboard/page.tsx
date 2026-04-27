@@ -1,12 +1,15 @@
-"use client"
+'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
-import NavBar from '@/components/NavBar'
-import HabitCard from '@/components/HabitCard'
-import type { DayStatus } from '@/lib/streak'
-import { calculateStreak, getLast7Days } from '@/lib/streak'
+import { motion, AnimatePresence } from 'framer-motion'
+import { CheckCircle2, Circle, Plus, Sparkles } from 'lucide-react'
+import BottomNav from '@/components/BottomNav'
+import SwipeCheckIn from '@/components/SwipeCheckIn'
+import { cn } from '@/lib/utils'
 import { supabase } from '@/lib/supabase'
+import { calculateStreak, getLast7Days } from '@/lib/streak'
+import type { DayStatus } from '@/lib/streak'
 
 type Habit = {
   id: string
@@ -27,11 +30,17 @@ type HabitState = {
   todayCompleted: boolean | null
 }
 
-function getGreeting(): string {
-  const h = new Date().getHours()
-  if (h < 12) return 'Good morning'
-  if (h < 17) return 'Good afternoon'
-  return 'Good evening'
+const CHECKIN_KEY = 'habidy_last_checkin'
+const MS_24H = 24 * 60 * 60 * 1000
+
+function needsCheckIn(): boolean {
+  try {
+    const last = localStorage.getItem(CHECKIN_KEY)
+    if (!last) return true
+    return Date.now() - Number(last) >= MS_24H
+  } catch {
+    return true
+  }
 }
 
 function buildHabitState(logs: Log[]): HabitState {
@@ -46,36 +55,60 @@ function buildHabitState(logs: Log[]): HabitState {
   }
 }
 
+const QUOTES = [
+  'Small steps every day lead to big changes.',
+  "You don't have to be perfect, just consistent.",
+  'The secret of getting ahead is getting started.',
+  'Progress, not perfection.',
+  'Your future self will thank you.',
+  'Discipline is choosing what you want most over what you want now.',
+  'One habit at a time, one day at a time.',
+  "You're closer than you think — keep going!",
+  'Success is the sum of small efforts repeated daily.',
+  'Be patient with yourself. Growth takes time.',
+]
+
 export default function DashboardPage() {
   const router = useRouter()
   const [userId, setUserId] = useState<string | null>(null)
+  const [userName, setUserName] = useState('')
+  const [identityStatement, setIdentityStatement] = useState('')
   const [habits, setHabits] = useState<Habit[]>([])
   const [habitStates, setHabitStates] = useState<Record<string, HabitState>>({})
-  const [identityStatement, setIdentityStatement] = useState('')
   const [loading, setLoading] = useState(true)
+  const [showSwipe, setShowSwipe] = useState(false)
+  const [checked, setChecked] = useState<Set<string>>(new Set())
+
+  const quote = useMemo(() => QUOTES[Math.floor(Math.random() * QUOTES.length)], [])
+  const firstName = userName.split(' ')[0] || ''
+  const identityText = identityStatement
+    ? identityStatement.length > 80
+      ? identityStatement.slice(0, 80) + '…'
+      : identityStatement
+    : null
 
   useEffect(() => {
     async function load() {
+      try {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) return
-
       setUserId(user.id)
 
-      // Load identity statement
       const { data: userRow } = await supabase
         .from('users')
-        .select('identity_statement')
+        .select('identity_statement, profile_name')
         .eq('id', user.id)
         .maybeSingle()
-      if (userRow?.identity_statement) setIdentityStatement(userRow.identity_statement)
 
-      // Load active habits
+      if (userRow?.identity_statement) setIdentityStatement(userRow.identity_statement)
+      if (userRow?.profile_name) setUserName(userRow.profile_name)
+      else if (user.email) setUserName(user.email.split('@')[0])
+
       const habitsRes = await fetch(`/api/habits?user_id=${user.id}`)
       const habitsJson = await habitsRes.json() as { habits?: Habit[] }
       const activeHabits: Habit[] = habitsJson.habits ?? []
 
       if (activeHabits.length === 0) {
-        // Fall back to localStorage for offline / pre-save state
         const saved = localStorage.getItem('habidy_active_habit')
         if (saved) {
           const h: Habit = JSON.parse(saved)
@@ -90,7 +123,6 @@ export default function DashboardPage() {
 
       setHabits(activeHabits)
 
-      // Load last 60 days of logs for all habits in one query
       const habitIds = activeHabits.map((h) => h.id)
       const since = new Date()
       since.setDate(since.getDate() - 60)
@@ -114,9 +146,17 @@ export default function DashboardPage() {
         states[h.id] = buildHabitState(byHabit[h.id] ?? [])
       }
       setHabitStates(states)
-      setLoading(false)
-    }
 
+      // Show swipe check-in if habits exist and haven't checked in today
+      if (activeHabits.length > 0 && needsCheckIn()) {
+        setShowSwipe(true)
+      }
+
+      setLoading(false)
+      } catch {
+        setLoading(false)
+      }
+    }
     load()
   }, [])
 
@@ -131,11 +171,6 @@ export default function DashboardPage() {
       return { ...prev, [habitId]: buildHabitState(updatedLogs) }
     })
 
-    // Persist locally
-    localStorage.setItem(`habidy_logs_${habitId}`, JSON.stringify(
-      (habitStates[habitId]?.logs ?? []).filter((l) => l.date !== today).concat({ date: today, completed })
-    ))
-
     try {
       await fetch(`/api/habits/${habitId}/log`, {
         method: 'POST',
@@ -143,128 +178,261 @@ export default function DashboardPage() {
         body: JSON.stringify({ user_id: userId, completed, date: today }),
       })
     } catch {
-      // Offline — local state is fine
+      // Offline fallback
     }
   }
 
-  // Show "+ Add habit" if any habit has a 7-day streak
+  const handleSwipeComplete = useCallback(
+    async (completedSet: Set<string>) => {
+      localStorage.setItem(CHECKIN_KEY, String(Date.now()))
+      setShowSwipe(false)
+      setChecked(completedSet)
+
+      const today = new Date().toISOString().split('T')[0]
+      for (const habit of habits) {
+        const completed = completedSet.has(habit.id)
+        await handleLog(habit.id, completed)
+      }
+    },
+    [habits, userId]
+  )
+
+  const toggle = (id: string) => {
+    setChecked((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
   const showAddHabit = Object.values(habitStates).some((s) => s.streak >= 7)
 
+  const dailyHabits = habits
+  const dailyCompleted = dailyHabits.filter((h) => {
+    const state = habitStates[h.id]
+    return state?.todayLogged && state?.todayCompleted
+  }).length
+  const dailyPct = dailyHabits.length > 0 ? (dailyCompleted / dailyHabits.length) * 100 : 0
+
+  if (showSwipe && habits.length > 0) {
+    return (
+      <SwipeCheckIn
+        habits={habits.map((h) => ({ id: h.id, name: h.habit_name, description: h.cue ?? undefined }))}
+        onComplete={handleSwipeComplete}
+      />
+    )
+  }
+
   return (
-    <div className="flex min-h-screen flex-col bg-zinc-50 pb-24">
+    <div className="flex min-h-screen flex-col bg-background pb-24">
       {/* Header */}
-      <div className="bg-white px-5 pt-12 pb-6">
-        <div className="mx-auto max-w-sm flex items-start justify-between">
-          <div>
-            <h1 className="text-2xl font-semibold text-zinc-900">{getGreeting()}</h1>
-            {identityStatement && (
-              <p className="mt-1 text-sm text-zinc-500 leading-relaxed">
-                You&apos;re becoming someone who{' '}
-                {identityStatement.replace(/^i want to be someone who\s*/i, '')}
-              </p>
-            )}
-          </div>
-          {/* + button — add a new identity */}
-          <button
-            onClick={() => router.push('/')}
-            className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-zinc-100 text-lg font-light text-zinc-600 transition-colors hover:bg-zinc-200 active:bg-zinc-300"
-            title="Add new identity"
+      <header className="px-6 pt-14 pb-2">
+        <div className="flex items-start justify-between gap-3">
+          <motion.h1
+            className="font-heading text-4xl font-black text-foreground"
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
           >
-            +
-          </button>
+            Hey {firstName} 👋
+          </motion.h1>
+          <motion.button
+            onClick={() => router.push('/profile')}
+            aria-label="Open profile"
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-primary to-primary/60 font-heading text-sm font-black text-primary-foreground shadow-md transition-transform active:scale-95"
+            initial={{ opacity: 0, scale: 0.8 }}
+            animate={{ opacity: 1, scale: 1 }}
+          >
+            {(userName || 'U').split(' ').map((n) => n[0]).filter(Boolean).slice(0, 2).join('').toUpperCase()}
+          </motion.button>
         </div>
-      </div>
+        {identityText && (
+          <motion.p
+            className="mt-2 font-body text-sm text-muted-foreground"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 0.15 }}
+          >
+            Becoming:{' '}
+            <span className="font-semibold text-primary">{identityText}</span>
+          </motion.p>
+        )}
+      </header>
+
+      {/* Motivational quote */}
+      <section className="px-6 pt-4">
+        <motion.div
+          className="rounded-3xl border border-border bg-card p-6"
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.2 }}
+        >
+          <p className="font-body text-base leading-relaxed text-foreground/90 italic">
+            &ldquo;{quote}&rdquo;
+          </p>
+        </motion.div>
+      </section>
+
+      {/* Progress bar — shown when habits exist */}
+      {habits.length > 0 && !loading && (
+        <section className="px-6 pt-4">
+          <motion.div
+            className="rounded-2xl border border-border bg-card p-4"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.25 }}
+          >
+            <div className="flex items-center justify-between">
+              <p className="font-body text-sm font-semibold text-foreground">Today&apos;s Progress</p>
+              <p className="font-heading text-sm font-bold text-primary">{dailyCompleted} of {dailyHabits.length}</p>
+            </div>
+            <div className="mt-3 h-2.5 w-full rounded-full bg-muted overflow-hidden">
+              <motion.div
+                className="h-full rounded-full bg-gradient-to-r from-primary to-primary/70"
+                initial={{ width: 0 }}
+                animate={{ width: `${dailyPct}%` }}
+                transition={{ duration: 0.6, ease: 'easeOut' }}
+              />
+            </div>
+            {dailyCompleted === dailyHabits.length && dailyHabits.length > 0 && (
+              <motion.p className="mt-2 text-center font-heading text-xs font-bold text-primary" initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }}>
+                🎉 All habits done today!
+              </motion.p>
+            )}
+          </motion.div>
+        </section>
+      )}
 
       {/* Content */}
-      <div className="mx-auto w-full max-w-sm flex-1 px-4 pt-4 space-y-4">
-
-        {/* Streak milestone celebrations — check all habits */}
-        {Object.values(habitStates).some((s) => s.streak === 7) && (
-          <div className="rounded-2xl bg-amber-50 border border-amber-100 px-5 py-4 text-center">
-            <p className="text-xl">🎉</p>
-            <p className="mt-1 text-sm font-medium text-amber-900">
-              7-day streak! You&apos;re building something real.
-            </p>
-          </div>
-        )}
-        {Object.values(habitStates).some((s) => s.streak === 30) && (
-          <div className="rounded-2xl bg-amber-50 border border-amber-200 px-5 py-4 text-center">
-            <p className="text-2xl">🏆</p>
-            <p className="mt-1 text-sm font-medium text-amber-900">
-              30 days. Time to level up this habit?
-            </p>
-          </div>
-        )}
-
-        {/* Habit cards */}
+      <section className="px-6 pt-5">
         {loading ? (
-          <div className="rounded-3xl border border-zinc-100 bg-white px-6 py-10 text-center">
-            <p className="text-sm text-zinc-400">Loading your habits...</p>
+          <div className="rounded-3xl border border-border bg-card px-6 py-10 text-center">
+            <p className="font-body text-sm text-muted-foreground">Loading your habits…</p>
           </div>
         ) : habits.length === 0 ? (
-          <div className="rounded-3xl border border-zinc-200 bg-white px-6 py-10 text-center">
-            <p className="text-3xl">🌱</p>
-            <p className="mt-3 text-base font-medium text-zinc-900">No habit yet</p>
-            <p className="mt-1 text-sm text-zinc-500">Build your first habit with Architect</p>
+          <motion.div
+            className="flex flex-col items-center"
+            initial={{ opacity: 0, scale: 0.8 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ delay: 0.35, type: 'spring', stiffness: 200 }}
+          >
+            <img src="/mascot.png" alt="Habidy mascot" className="h-32 w-32 object-contain" />
+            <p className="mt-3 font-heading text-sm font-bold text-muted-foreground">Let&apos;s make today count!</p>
             <button
               onClick={() => router.push('/architect')}
-              className="mt-4 rounded-2xl bg-zinc-900 px-6 py-3 text-sm font-medium text-white"
+              className="mt-6 rounded-full bg-primary px-8 py-3 font-heading text-sm font-bold text-primary-foreground shadow-lg"
             >
-              Build a habit →
+              Build your first habit →
+            </button>
+          </motion.div>
+        ) : (
+          <>
+            <div className="flex items-center gap-2 mb-3">
+              <Sparkles size={18} className="text-secondary" />
+              <h2 className="font-heading text-lg font-bold text-foreground">Today&apos;s Habits</h2>
+            </div>
+            <ul className="space-y-2.5">
+              <AnimatePresence>
+                {habits.map((habit, i) => {
+                  const state = habitStates[habit.id]
+                  const done = state?.todayLogged && state?.todayCompleted
+                  return (
+                    <motion.li
+                      key={habit.id}
+                      initial={{ opacity: 0, x: -16 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ delay: i * 0.06, duration: 0.35 }}
+                    >
+                      <button
+                        onClick={() => {
+                          if (!state?.todayLogged) void handleLog(habit.id, !done)
+                        }}
+                        className={cn(
+                          'flex w-full items-center gap-3 rounded-2xl border px-4 py-3.5 text-left transition-all',
+                          done
+                            ? 'border-primary/30 bg-primary/10'
+                            : 'border-border bg-card hover:border-primary/40'
+                        )}
+                      >
+                        {done
+                          ? <CheckCircle2 size={22} className="shrink-0 text-primary" />
+                          : <Circle size={22} className="shrink-0 text-muted-foreground/50" />
+                        }
+                        <div className="min-w-0 flex-1">
+                          <span className={cn(
+                            'font-body text-[15px] font-semibold transition-all',
+                            done ? 'text-primary line-through decoration-primary/40' : 'text-foreground'
+                          )}>
+                            {habit.habit_name}
+                          </span>
+                          {habit.identity_label && (
+                            <p className="mt-0.5 font-body text-xs text-muted-foreground">{habit.identity_label}</p>
+                          )}
+                        </div>
+                        {state && (
+                          <span className="font-heading text-xs font-bold text-muted-foreground shrink-0">
+                            {state.streak}🔥
+                          </span>
+                        )}
+                      </button>
+                    </motion.li>
+                  )
+                })}
+              </AnimatePresence>
+            </ul>
+
+            {showAddHabit && (
+              <button
+                onClick={() => router.push('/add-habit')}
+                className="mt-3 flex w-full items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-border py-4 font-body text-sm font-medium text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground"
+              >
+                + Add another habit
+              </button>
+            )}
+          </>
+        )}
+      </section>
+
+      {/* Quick links */}
+      {!loading && (
+        <section className="px-6 pt-5">
+          <div className="grid grid-cols-2 gap-3">
+            <button
+              onClick={() => router.push('/constellation')}
+              className="flex flex-col items-start gap-2 rounded-2xl border border-border bg-card px-4 py-4 text-left shadow-sm"
+            >
+              <span className="text-xl">✦</span>
+              <span className="font-heading text-sm font-bold text-foreground">Reflect</span>
+              <span className="font-body text-xs text-muted-foreground">Chat with your coach</span>
+            </button>
+            <button
+              onClick={() => router.push('/architect')}
+              className="flex flex-col items-start gap-2 rounded-2xl border border-border bg-card px-4 py-4 text-left shadow-sm"
+            >
+              <span className="text-xl">🔨</span>
+              <span className="font-heading text-sm font-bold text-foreground">Build</span>
+              <span className="font-body text-xs text-muted-foreground">Refine with Architect</span>
             </button>
           </div>
-        ) : (
-          habits.map((habit) => {
-            const state = habitStates[habit.id] ?? {
-              logs: [], streak: 0, last7: getLast7Days([]), todayLogged: false, todayCompleted: null,
-            }
-            return (
-              <HabitCard
-                key={habit.id}
-                habit={habit}
-                streak={state.streak}
-                last7={state.last7}
-                todayLogged={state.todayLogged}
-                todayCompleted={state.todayCompleted}
-                userId={userId}
-                onLog={(completed) => handleLog(habit.id, completed)}
-              />
-            )
-          })
-        )}
+        </section>
+      )}
 
-        {/* Add another habit — shown after 7-day streak */}
-        {showAddHabit && (
-          <button
-            onClick={() => router.push('/add-habit')}
-            className="flex w-full items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-zinc-200 py-4 text-sm font-medium text-zinc-500 transition-colors hover:border-zinc-400 hover:text-zinc-700"
-          >
-            + Add another habit
-          </button>
-        )}
+      {/* FAB — add habit */}
+      {habits.length > 0 && (
+        <motion.button
+          onClick={() => router.push('/architect')}
+          className="fixed bottom-24 right-6 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-primary shadow-lg shadow-primary/30 text-primary-foreground transition-transform hover:scale-110 active:scale-95"
+          initial={{ scale: 0 }}
+          animate={{ scale: 1 }}
+          transition={{ delay: 0.5, type: 'spring', stiffness: 300 }}
+          whileHover={{ scale: 1.1 }}
+          whileTap={{ scale: 0.9 }}
+        >
+          <Plus size={28} strokeWidth={2.5} />
+        </motion.button>
+      )}
 
-        {/* Quick links */}
-        <div className="grid grid-cols-2 gap-3 pt-2">
-          <button
-            onClick={() => router.push('/constellation')}
-            className="flex flex-col items-start gap-2 rounded-2xl bg-white border border-zinc-100 px-4 py-4 text-left shadow-sm"
-          >
-            <span className="text-xl">✦</span>
-            <span className="text-sm font-medium text-zinc-900">Reflect</span>
-            <span className="text-xs text-zinc-500">Chat with Crystal Ball</span>
-          </button>
-          <button
-            onClick={() => router.push('/architect')}
-            className="flex flex-col items-start gap-2 rounded-2xl bg-white border border-zinc-100 px-4 py-4 text-left shadow-sm"
-          >
-            <span className="text-xl">🔨</span>
-            <span className="text-sm font-medium text-zinc-900">Build</span>
-            <span className="text-xs text-zinc-500">Refine with Architect</span>
-          </button>
-        </div>
-      </div>
-
-      <NavBar />
+      <BottomNav />
     </div>
   )
 }
