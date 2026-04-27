@@ -1,15 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { callClaude, resolveModel, Message } from '@/lib/claude'
-import type { TokenUsage } from '@/lib/claude'
 import { agentGuard } from '@/lib/agentGuard'
 import { logAgentSession } from '@/lib/logger'
-import { buildIdentityGathererSystemPrompt, buildForcedSummaryPrompt } from '@/lib/agents/constellation'
+import {
+  buildIdentityGathererSystemPrompt,
+  buildForcedSummaryPrompt,
+  type OnboardingContext,
+} from '@/lib/agents/constellation'
 import { adminClient, getProfileContext } from '@/lib/supabase'
 import { traceable } from '@/lib/langsmith'
 
 const supabase = adminClient()
-
 const AGENT_MODEL = resolveModel()
+const MAX_TURNS = 10
+const WRAP_UP_AT = 2
+const SUMMARY_MARKER = 'IDENTITY_GATHERER_SUMMARY:'
 
 const runIdentityGatherer = traceable(
   async (
@@ -26,23 +31,15 @@ const runIdentityGatherer = traceable(
   }
 )
 
-const MAX_TURNS = 10
-const WRAP_UP_AT = 2
-
-const SUMMARY_MARKER = 'IDENTITY_GATHERER_SUMMARY:'
-
-const MOCK_USER = {
-  id: 'mock-user-id',
-  name: 'Friend',
-  identity_statement: 'someone who takes care of themselves',
-}
+type OnboardingFallback = Partial<OnboardingContext>
 
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
-    const { messages, userId } = body as {
+    const { messages, userId, onboardingFallback } = body as {
       messages: Message[]
       userId?: string
+      onboardingFallback?: OnboardingFallback
     }
 
     if (!messages) {
@@ -52,19 +49,72 @@ export async function POST(req: NextRequest) {
     const turnsUsed = messages.filter((m) => m.role === 'user').length
     const turnsRemaining = MAX_TURNS - turnsUsed
 
-    // ── Limit reached: force-generate summary ────────────────────────────────
-    if (turnsUsed >= MAX_TURNS) {
-      let summaryJson: string | null = null
-      let forcedUsage: TokenUsage | null = null
+    // ── Load user row from DB ──────────────────────────────────────────────────
+    let userRow: Record<string, unknown> | null = null
+    if (userId) {
+      try {
+        type UserResult = { data: Record<string, unknown> | null; error: unknown }
+        const result = await agentGuard<UserResult>({
+          agentName: 'identity-gatherer',
+          toolName: 'getUser',
+          input: { userId },
+          userId,
+          fn: async (): Promise<UserResult> => {
+            const r = await supabase
+              .from('users')
+              .select('id, display_name, profile_name, identity_statement, goal_category, friction_point, time_available')
+              .eq('id', userId)
+              .single()
+            return r as UserResult
+          },
+          assert: (r) => { if (!r.data) throw new Error('User not found') },
+        })
+        userRow = result.data
+      } catch {
+        // Fall through to onboardingFallback
+      }
+    }
 
+    // ── Build onboarding context: DB primary, sessionStorage fallback ──────────
+    const fb = onboardingFallback ?? {}
+    const onboarding: OnboardingContext = {
+      identity: (userRow?.identity_statement as string) || fb.identity || '',
+      goalCategory: (userRow?.goal_category as string) || fb.goalCategory || '',
+      frictionPoint: (userRow?.friction_point as string) || fb.frictionPoint || '',
+      timeAvailable: (userRow?.time_available as string) || fb.timeAvailable || '',
+      displayName: (userRow?.display_name as string) || (userRow?.profile_name as string) || fb.displayName || 'Friend',
+      // Rich fields only available from sessionStorage fallback (not in DB columns)
+      stickTime: fb.stickTime,
+      sleep: fb.sleep,
+      stress: fb.stress,
+      anchorHabits: fb.anchorHabits,
+      wastedTime: fb.wastedTime,
+      location: fb.location,
+      goalClarity: fb.goalClarity,
+      allBlockers: fb.allBlockers,
+    }
+
+    // ── Debug log ─────────────────────────────────────────────────────────────
+    console.log('[Crystal Ball] context loaded:', {
+      userId,
+      hasIdentity: !!onboarding.identity,
+      identity: onboarding.identity || '(empty)',
+      hasGoalCategory: !!onboarding.goalCategory,
+      goalCategory: onboarding.goalCategory || '(empty)',
+      hasFrictionPoint: !!onboarding.frictionPoint,
+      frictionPoint: onboarding.frictionPoint || '(empty)',
+      hasTimeAvailable: !!onboarding.timeAvailable,
+      hasAnchorHabits: !!(onboarding.anchorHabits?.length),
+      anchorHabits: onboarding.anchorHabits ?? [],
+      sourceDB: !!userRow,
+      sourceFallback: !!onboardingFallback,
+      turnsUsed,
+    })
+
+    // ── Limit reached: force-generate summary ─────────────────────────────────
+    if (turnsUsed >= MAX_TURNS) {
       if (userId) {
         try {
-          const { data: userRow } = await supabase
-            .from('users')
-            .select('identity_statement')
-            .eq('id', userId)
-            .single()
-
           const forcedSummary = await agentGuard({
             agentName: 'identity-gatherer',
             toolName: 'forcedSummary',
@@ -73,26 +123,23 @@ export async function POST(req: NextRequest) {
             fn: () =>
               callClaude({
                 systemPrompt: buildForcedSummaryPrompt({
-                  userName: 'Friend',
-                  identityStatement: (userRow?.identity_statement as string) ?? '',
+                  userName: onboarding.displayName,
+                  identityStatement: onboarding.identity,
                   conversation: messages,
                 }),
                 messages: [{ role: 'user', content: 'Generate the summary now.' }],
                 maxTokens: 512,
                 model: AGENT_MODEL,
-                onUsage: (u) => { forcedUsage = u },
               }),
           })
-
-          summaryJson = forcedSummary
 
           await supabase.from('conversation_memory').insert({
             user_id: userId,
             agent: 'identity-gatherer',
-            summary: summaryJson,
+            summary: forcedSummary,
           })
         } catch {
-          // Non-fatal — still show handoff
+          // Non-fatal
         }
       }
 
@@ -101,7 +148,7 @@ export async function POST(req: NextRequest) {
         agent: 'identity-gatherer',
         model: AGENT_MODEL,
         turnsUsed,
-        tokenUsage: forcedUsage,
+        tokenUsage: null,
         goalReached: false,
         conversation: messages,
       })
@@ -112,42 +159,6 @@ export async function POST(req: NextRequest) {
         showHandoff: true,
         turnsUsed,
         turnsRemaining: 0,
-      })
-    }
-
-    // ── Load user context ─────────────────────────────────────────────────────
-    let userCtx = MOCK_USER
-    if (userId) {
-      try {
-        type UserResult = { data: Record<string, unknown> | null; error: unknown }
-        const result = await agentGuard<UserResult>({
-          agentName: 'identity-gatherer',
-          toolName: 'getUser',
-          input: { userId },
-          userId,
-          fn: async (): Promise<UserResult> => {
-            const r = await supabase.from('users').select('*').eq('id', userId).single()
-            return r as UserResult
-          },
-          assert: (r) => { if (!r.data) throw new Error('User not found') },
-        })
-        if (result.data) {
-          userCtx = {
-            id: result.data.id as string,
-            name: (result.data.name as string) ?? 'Friend',
-            identity_statement: (result.data.identity_statement as string) ?? '',
-          }
-        }
-      } catch {
-        // Fall back to mock context
-      }
-    }
-
-    if (!userCtx.identity_statement) {
-      return NextResponse.json({
-        message: "Before we begin — what kind of person are you trying to become? Finish this sentence: \"I want to be someone who...\"",
-        turnsUsed,
-        turnsRemaining,
       })
     }
 
@@ -162,25 +173,19 @@ export async function POST(req: NextRequest) {
     }
 
     // ── Build system prompt ───────────────────────────────────────────────────
-    let systemPrompt = buildIdentityGathererSystemPrompt({
-      userName: userCtx.name,
-      identityStatement: userCtx.identity_statement,
-      profileContext,
-    })
+    let systemPrompt = buildIdentityGathererSystemPrompt({ onboarding, profileContext })
 
     if (turnsRemaining <= WRAP_UP_AT) {
-      systemPrompt += `\n\n[SYSTEM: You have ${turnsRemaining} exchange${turnsRemaining === 1 ? '' : 's'} remaining. Write your closing recap now — 3–4 sentences covering who they want to become, what's been getting in the way, and what kind of habit would fit their life. End with "Ready to build your first habit around this?" Then on the next line output the IDENTITY_GATHERER_SUMMARY JSON. Do not leave any field blank.]`
+      systemPrompt += `\n\n[SYSTEM: ${turnsRemaining} exchange${turnsRemaining === 1 ? '' : 's'} remaining. Write your closing recap now — 3–4 sentences covering who they want to become, what's been getting in the way, and what kind of habit would fit their life. End with "Ready to build your first habit around this?" Then output the IDENTITY_GATHERER_SUMMARY JSON on the next line. Do not leave any field blank.]`
     }
 
     // ── Call Claude ───────────────────────────────────────────────────────────
-    let turnUsage: TokenUsage | null = null
-
     const reply = await agentGuard({
       agentName: 'identity-gatherer',
       toolName: 'chat',
-      input: { userId: userCtx.id, turnsUsed, turnsRemaining },
-      userId: userCtx.id,
-      fn: () => runIdentityGatherer(systemPrompt, messages, AGENT_MODEL, userCtx.id, turnsUsed),
+      input: { userId: userId ?? 'anonymous', turnsUsed, turnsRemaining },
+      userId: userId ?? 'anonymous',
+      fn: () => runIdentityGatherer(systemPrompt, messages, AGENT_MODEL, userId ?? 'anonymous', turnsUsed),
     })
 
     // ── Detect IDENTITY_GATHERER_SUMMARY marker ───────────────────────────────
@@ -189,16 +194,21 @@ export async function POST(req: NextRequest) {
       const cleanReply = reply.slice(0, markerIdx).trim()
       const jsonStr = reply.slice(markerIdx + SUMMARY_MARKER.length).trim()
 
-      // Combine structured JSON + plain-text recap into one record
       if (userId) {
         try {
           let summaryToSave = jsonStr
           try {
             const parsed = JSON.parse(jsonStr)
             parsed.recap = cleanReply
+            // Enrich with onboarding context so Architect has maximum data
+            if (onboarding.identity && !parsed.who_they_want_to_be) {
+              parsed.who_they_want_to_be = onboarding.identity
+            }
+            if (onboarding.anchorHabits?.length && !parsed.existing_behaviors) {
+              parsed.existing_behaviors = onboarding.anchorHabits.join(', ')
+            }
             summaryToSave = JSON.stringify(parsed)
           } catch {
-            // If JSON parse fails, save raw + recap appended
             summaryToSave = jsonStr + '\n\nRECAP:\n' + cleanReply
           }
 
@@ -217,7 +227,7 @@ export async function POST(req: NextRequest) {
         agent: 'identity-gatherer',
         model: AGENT_MODEL,
         turnsUsed: turnsUsed + 1,
-        tokenUsage: turnUsage,
+        tokenUsage: null,
         goalReached: true,
         conversation: [...messages, { role: 'assistant', content: cleanReply }],
       })
@@ -230,11 +240,7 @@ export async function POST(req: NextRequest) {
       })
     }
 
-    return NextResponse.json({
-      message: reply,
-      turnsUsed,
-      turnsRemaining,
-    })
+    return NextResponse.json({ message: reply, turnsUsed, turnsRemaining })
   } catch (err) {
     console.error('[POST /api/agents/constellation]', err)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })

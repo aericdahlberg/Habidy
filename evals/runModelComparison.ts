@@ -158,8 +158,13 @@ async function runInvestigation(
   persona: Persona,
 ): Promise<{ conversation: Message[]; summary: string | null; tokens: number }> {
   const systemPrompt = buildIdentityGathererSystemPrompt({
-    userName: 'Friend',
-    identityStatement: identity,
+    onboarding: {
+      identity,
+      goalCategory: '',
+      frictionPoint: '',
+      timeAvailable: '',
+      displayName: 'Friend',
+    },
     profileContext: null,
   })
 

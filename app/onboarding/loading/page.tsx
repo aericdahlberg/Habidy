@@ -18,8 +18,17 @@ export default function OnboardingLoading() {
       const identityStatement = sessionStorage.getItem('habidy_onboarding_identity') ?? ''
       const questionnaire = JSON.parse(sessionStorage.getItem('habidy_onboarding_questionnaire') ?? '{}')
 
+      // Persist under consistent keys BEFORE clearing — constellation reads these
+      if (identityStatement) sessionStorage.setItem('habidy_identity', identityStatement)
+      if (questionnaire.focus) sessionStorage.setItem('habidy_goal_category', questionnaire.focus)
+      if (questionnaire.blockers?.length) sessionStorage.setItem('habidy_friction_point', questionnaire.blockers[0])
+      if (questionnaire.energyTime) sessionStorage.setItem('habidy_time_available', questionnaire.energyTime)
+      if (profile.name) sessionStorage.setItem('habidy_display_name', profile.name)
+      // Full questionnaire for rich context
+      sessionStorage.setItem('habidy_questionnaire', JSON.stringify(questionnaire))
+
       try {
-        await fetch('/api/onboarding', {
+        const res = await fetch('/api/onboarding', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -33,10 +42,16 @@ export default function OnboardingLoading() {
             questionnaire,
           }),
         })
-      } catch {
-        // Non-fatal — continue to constellation even if save fails
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}))
+          console.error('[onboarding/loading] API error:', err)
+        }
+      } catch (err) {
+        console.error('[onboarding/loading] fetch failed:', err)
+        // Non-fatal — continue to constellation
       }
 
+      // Clear old session keys (keep the new habidy_* ones)
       sessionStorage.removeItem('habidy_onboarding_profile')
       sessionStorage.removeItem('habidy_onboarding_identity')
       sessionStorage.removeItem('habidy_onboarding_questionnaire')
