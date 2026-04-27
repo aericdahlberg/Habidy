@@ -23,7 +23,7 @@ const IDENTITY_CARDS = [
     label: "writer",
     gradient: "from-indigo-800 via-violet-700 to-purple-600",
     emoji: "✍️",
-    description: "creative, thoughtful, making things",
+    description: "creative, thoughtful, thinker",
   },
   {
     label: "artist",
