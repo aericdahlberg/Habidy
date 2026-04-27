@@ -76,6 +76,7 @@ export default function DashboardPage() {
   const [habits, setHabits] = useState<Habit[]>([])
   const [habitStates, setHabitStates] = useState<Record<string, HabitState>>({})
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState('')
   const [showSwipe, setShowSwipe] = useState(false)
   const [checked, setChecked] = useState<Set<string>>(new Set())
 
@@ -90,75 +91,78 @@ export default function DashboardPage() {
   useEffect(() => {
     async function load() {
       try {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) return
-      setUserId(user.id)
-
-      const { data: userRow } = await supabase
-        .from('users')
-        .select('identity_statement, profile_name')
-        .eq('id', user.id)
-        .maybeSingle()
-
-      if (userRow?.identity_statement) setIdentityStatement(userRow.identity_statement)
-      if (userRow?.profile_name) setUserName(userRow.profile_name)
-      else if (user.email) setUserName(user.email.split('@')[0])
-
-      const habitsRes = await fetch(`/api/habits?user_id=${user.id}`)
-      const habitsJson = await habitsRes.json() as { habits?: Habit[] }
-      const activeHabits: Habit[] = habitsJson.habits ?? []
-
-      if (activeHabits.length === 0) {
-        const saved = localStorage.getItem('habidy_active_habit')
-        if (saved) {
-          const h: Habit = JSON.parse(saved)
-          setHabits([h])
-          const savedLogs = localStorage.getItem(`habidy_logs_${h.id}`)
-          const logs: Log[] = savedLogs ? JSON.parse(savedLogs) : []
-          setHabitStates({ [h.id]: buildHabitState(logs) })
+        setLoadError('')
+        const { data: { user } } = await supabase.auth.getUser()
+        if (!user) {
+          router.replace('/login')
+          return
         }
+        setUserId(user.id)
+        localStorage.removeItem('habidy_active_habit')
+
+        const { data: userRow } = await supabase
+          .from('users')
+          .select('identity_statement, display_name')
+          .eq('id', user.id)
+          .maybeSingle()
+
+        if (userRow?.identity_statement) setIdentityStatement(userRow.identity_statement)
+        if (userRow?.display_name) setUserName(userRow.display_name)
+        else if (user.email) setUserName(user.email.split('@')[0])
+
+        const habitsRes = await fetch(`/api/habits?user_id=${user.id}`, { cache: 'no-store' })
+        const habitsJson = await habitsRes.json().catch(() => ({})) as { habits?: Habit[]; error?: string }
+        if (!habitsRes.ok) {
+          throw new Error(habitsJson.error ?? 'Could not load habits')
+        }
+        const activeHabits: Habit[] = habitsJson.habits ?? []
+
+        if (activeHabits.length === 0) {
+          setHabits([])
+          setHabitStates({})
+          setLoading(false)
+          return
+        }
+
+        setHabits(activeHabits)
+
+        const habitIds = activeHabits.map((h) => h.id)
+        const since = new Date()
+        since.setDate(since.getDate() - 60)
+        const sinceStr = since.toISOString().split('T')[0]
+
+        const { data: allLogs } = await supabase
+          .from('habit_logs')
+          .select('habit_id, date, completed')
+          .in('habit_id', habitIds)
+          .gte('date', sinceStr)
+          .order('date', { ascending: false })
+
+        const byHabit: Record<string, Log[]> = {}
+        for (const log of allLogs ?? []) {
+          if (!byHabit[log.habit_id]) byHabit[log.habit_id] = []
+          byHabit[log.habit_id].push({ date: log.date, completed: log.completed })
+        }
+
+        const states: Record<string, HabitState> = {}
+        for (const h of activeHabits) {
+          states[h.id] = buildHabitState(byHabit[h.id] ?? [])
+        }
+        setHabitStates(states)
+
+        // Show swipe check-in if habits exist and haven't checked in today
+        if (activeHabits.length > 0 && needsCheckIn()) {
+          setShowSwipe(true)
+        }
+
         setLoading(false)
-        return
-      }
-
-      setHabits(activeHabits)
-
-      const habitIds = activeHabits.map((h) => h.id)
-      const since = new Date()
-      since.setDate(since.getDate() - 60)
-      const sinceStr = since.toISOString().split('T')[0]
-
-      const { data: allLogs } = await supabase
-        .from('habit_logs')
-        .select('habit_id, date, completed')
-        .in('habit_id', habitIds)
-        .gte('date', sinceStr)
-        .order('date', { ascending: false })
-
-      const byHabit: Record<string, Log[]> = {}
-      for (const log of allLogs ?? []) {
-        if (!byHabit[log.habit_id]) byHabit[log.habit_id] = []
-        byHabit[log.habit_id].push({ date: log.date, completed: log.completed })
-      }
-
-      const states: Record<string, HabitState> = {}
-      for (const h of activeHabits) {
-        states[h.id] = buildHabitState(byHabit[h.id] ?? [])
-      }
-      setHabitStates(states)
-
-      // Show swipe check-in if habits exist and haven't checked in today
-      if (activeHabits.length > 0 && needsCheckIn()) {
-        setShowSwipe(true)
-      }
-
-      setLoading(false)
-      } catch {
+      } catch (err) {
+        setLoadError(err instanceof Error ? err.message : 'Could not load habits')
         setLoading(false)
       }
     }
     load()
-  }, [])
+  }, [router])
 
   async function handleLog(habitId: string, completed: boolean) {
     if (!userId) return
@@ -308,6 +312,11 @@ export default function DashboardPage() {
         {loading ? (
           <div className="rounded-3xl border border-border bg-card px-6 py-10 text-center">
             <p className="font-body text-sm text-muted-foreground">Loading your habits…</p>
+          </div>
+        ) : loadError ? (
+          <div className="rounded-3xl border border-destructive/30 bg-card px-6 py-10 text-center">
+            <p className="font-heading text-sm font-bold text-foreground">Couldn&apos;t load your habits</p>
+            <p className="mt-2 font-body text-sm text-muted-foreground">{loadError}</p>
           </div>
         ) : habits.length === 0 ? (
           <motion.div

@@ -21,10 +21,12 @@ export default function WelcomePage() {
       if (data?.new_user === false && data?.identity_statement) {
         router.replace('/dashboard')
       } else {
-        // Mark welcome as seen and go to new onboarding
-        if (user) {
-          await supabase.from('users').update({ new_user: false }).eq('id', user.id)
-        }
+        // Ensure the users row exists — upsert so it's created even if missing.
+        // This is the first time we write this user to our custom users table.
+        await supabase
+          .from('users')
+          .upsert({ id: user.id, new_user: false }, { onConflict: 'id' })
+
         router.replace('/onboarding')
       }
     }

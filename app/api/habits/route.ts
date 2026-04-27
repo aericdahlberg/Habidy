@@ -1,16 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { adminClient } from '@/lib/supabase'
-
-const supabase = adminClient()
+import { getRouteUser } from '@/lib/supabaseServer'
 
 export async function GET(req: NextRequest) {
-  const userId = req.nextUrl.searchParams.get('user_id')
-  if (!userId) return NextResponse.json({ error: 'user_id required' }, { status: 400 })
+  const user = await getRouteUser()
+  if (!user) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 })
 
-  const { data, error } = await supabase
+  const requestedUserId = req.nextUrl.searchParams.get('user_id')
+  if (requestedUserId && requestedUserId !== user.id) {
+    return NextResponse.json({ error: 'Cannot read habits for another user' }, { status: 403 })
+  }
+
+  const { data, error } = await adminClient()
     .from('habits')
     .select('*')
-    .eq('user_id', userId)
+    .eq('user_id', user.id)
     .eq('is_active', true)
     .order('created_at', { ascending: false })
 
@@ -23,12 +27,19 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
+    const user = await getRouteUser()
+    if (!user) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 })
+
     const body = await req.json()
+    const bodyUserId = typeof body.user_id === 'string' ? body.user_id : null
+    if (bodyUserId && bodyUserId !== user.id) {
+      return NextResponse.json({ error: 'Cannot create habits for another user' }, { status: 403 })
+    }
 
     // ── Multi-habit path ──────────────────────────────────────────────────────
     if (body.habits && Array.isArray(body.habits)) {
-      const { user_id, habits, selectedProposedIds } = body as {
-        user_id: string
+      const { habits, selectedProposedIds } = body as {
+        user_id?: string
         habits: Array<{
           identity_label?: string
           habit_name?: string
@@ -45,12 +56,12 @@ export async function POST(req: NextRequest) {
         selectedProposedIds?: string[]
       }
 
-      if (!user_id || habits.length === 0) {
-        return NextResponse.json({ error: 'user_id and habits required' }, { status: 400 })
+      if (habits.length === 0) {
+        return NextResponse.json({ error: 'habits required' }, { status: 400 })
       }
 
       const rows = habits.map((h) => ({
-        user_id,
+        user_id: user.id,
         habit_name: h.habit_name ?? h.name ?? 'Unnamed habit',
         identity_label: h.identity_label ?? null,
         cue: h.cue ?? null,
@@ -63,7 +74,7 @@ export async function POST(req: NextRequest) {
         is_active: true,
       }))
 
-      const { data: inserted, error: insertError } = await supabase
+      const { data: inserted, error: insertError } = await adminClient()
         .from('habits')
         .insert(rows)
         .select()
@@ -74,10 +85,11 @@ export async function POST(req: NextRequest) {
       }
 
       if (selectedProposedIds && selectedProposedIds.length > 0) {
-        await supabase
+        await adminClient()
           .from('proposed_habits')
           .update({ selected: true })
           .in('id', selectedProposedIds)
+          .eq('user_id', user.id)
       }
 
       return NextResponse.json({ habits: inserted })
@@ -85,18 +97,18 @@ export async function POST(req: NextRequest) {
 
     // ── Single-habit path ─────────────────────────────────────────────────────
     const {
-      user_id, habit_name, name, identity_label, cue, two_minute_version,
+      habit_name, name, identity_label, cue, two_minute_version,
       category, goal_category, action, craving, reward, time_of_day,
     } = body
 
-    if (!user_id || !(habit_name ?? name)) {
-      return NextResponse.json({ error: 'user_id and habit_name required' }, { status: 400 })
+    if (!(habit_name ?? name)) {
+      return NextResponse.json({ error: 'habit_name required' }, { status: 400 })
     }
 
-    const { data, error } = await supabase
+    const { data, error } = await adminClient()
       .from('habits')
       .insert({
-        user_id,
+        user_id: user.id,
         habit_name: habit_name ?? name,
         identity_label: identity_label ?? null,
         cue: cue ?? null,

@@ -21,7 +21,7 @@ const runIdentityGatherer = traceable(
     systemPrompt: string,
     messages: Message[],
     model: string,
-    _userId: string,
+    _userId: string | null,
     _turnsUsed: number,
   ): Promise<string> => callClaude({ systemPrompt, messages, model }),
   {
@@ -183,9 +183,9 @@ export async function POST(req: NextRequest) {
     const reply = await agentGuard({
       agentName: 'identity-gatherer',
       toolName: 'chat',
-      input: { userId: userId ?? 'anonymous', turnsUsed, turnsRemaining },
-      userId: userId ?? 'anonymous',
-      fn: () => runIdentityGatherer(systemPrompt, messages, AGENT_MODEL, userId ?? 'anonymous', turnsUsed),
+      input: { userId: userId ?? null, turnsUsed, turnsRemaining },
+      userId: userId ?? null,
+      fn: () => runIdentityGatherer(systemPrompt, messages, AGENT_MODEL, userId ?? null, turnsUsed),
     })
 
     // ── Detect IDENTITY_GATHERER_SUMMARY marker ───────────────────────────────

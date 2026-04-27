@@ -23,7 +23,7 @@ const runArchitect = traceable(
     systemPrompt: string,
     messages: Message[],
     model: string,
-    _userId: string,
+    _userId: string | null,
     _turnsUsed: number,
   ): Promise<string> => callClaude({ systemPrompt, messages, model }),
   {
@@ -149,8 +149,8 @@ export async function POST(req: NextRequest) {
         agentName: 'architect',
         toolName: 'autoGenerate',
         input: { userId, autoGenerate: true },
-        userId: userId ?? 'anonymous',
-        fn: () => runArchitect(systemPrompt, [], AGENT_MODEL, userId ?? 'anonymous', 0),
+        userId: userId ?? null,
+        fn: () => runArchitect(systemPrompt, [], AGENT_MODEL, userId ?? null, 0),
       })
 
       const habits = extractHabitsFromMessage(reply)
@@ -192,9 +192,9 @@ export async function POST(req: NextRequest) {
     const reply = await agentGuard({
       agentName: 'architect',
       toolName: 'chat',
-      input: { userId: userId ?? 'anonymous', turnsUsed, turnsRemaining },
-      userId: userId ?? 'anonymous',
-      fn: () => runArchitect(systemPrompt, messages, AGENT_MODEL, userId ?? 'anonymous', turnsUsed),
+      input: { userId: userId ?? null, turnsUsed, turnsRemaining },
+      userId: userId ?? null,
+      fn: () => runArchitect(systemPrompt, messages, AGENT_MODEL, userId ?? null, turnsUsed),
     })
 
     const habits = extractHabitsFromMessage(reply)

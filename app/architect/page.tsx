@@ -30,6 +30,7 @@ export default function ArchitectPage() {
   const [selected, setSelected] = useState<Set<number>>(new Set())
   const [state, setState] = useState<GenerateState>('loading')
   const [introText, setIntroText] = useState('')
+  const [saveError, setSaveError] = useState('')
 
   const generate = useCallback(async (uid: string) => {
     setState('loading')
@@ -85,8 +86,9 @@ export default function ArchitectPage() {
   }
 
   async function saveHabits() {
-    if (!habits || selected.size === 0 || state === 'saving') return
+    if (!habits || selected.size === 0 || state === 'saving' || !userId) return
     setState('saving')
+    setSaveError('')
 
     const selectedHabits = habits.filter((_, i) => selected.has(i))
     const selectedProposedIds = selectedHabits
@@ -100,29 +102,17 @@ export default function ArchitectPage() {
         body: JSON.stringify({ user_id: userId, habits: selectedHabits, selectedProposedIds }),
       })
 
-      if (res.ok) {
-        const firstHabit = selectedHabits[0]
-        localStorage.setItem('habidy_active_habit', JSON.stringify({
-          id: `local-${Date.now()}`,
-          habit_name: firstHabit.habit_name,
-          identity_label: firstHabit.identity_label,
-          cue: firstHabit.cue,
-          category: firstHabit.category,
-        }))
+      const data = await res.json().catch(() => ({})) as { error?: string }
+      if (!res.ok) {
+        throw new Error(data.error ?? 'Could not save habits')
       }
-    } catch {
-      // Fallback to localStorage
-      const firstHabit = selectedHabits[0]
-      localStorage.setItem('habidy_active_habit', JSON.stringify({
-        id: `local-${Date.now()}`,
-        habit_name: firstHabit.habit_name,
-        identity_label: firstHabit.identity_label,
-        cue: firstHabit.cue,
-        category: firstHabit.category,
-      }))
-    } finally {
+
+      localStorage.removeItem('habidy_active_habit')
       setState('saved')
       setTimeout(() => router.push('/dashboard'), 1200)
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : 'Could not save habits')
+      setState('ready')
     }
   }
 
@@ -275,9 +265,14 @@ export default function ArchitectPage() {
               })}
 
               <div className="pt-2">
+                {saveError && (
+                  <p className="mb-3 rounded-2xl border border-destructive/30 bg-card px-4 py-3 text-center font-body text-sm text-destructive">
+                    {saveError}
+                  </p>
+                )}
                 <motion.button
                   onClick={saveHabits}
-                  disabled={selected.size === 0 || state === 'saving'}
+                  disabled={selected.size === 0 || state === 'saving' || !userId}
                   className="w-full rounded-full bg-primary py-4 font-heading text-lg font-bold text-primary-foreground shadow-lg disabled:opacity-40"
                   whileTap={{ scale: 0.98 }}
                 >
