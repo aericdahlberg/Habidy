@@ -3,42 +3,15 @@
 #Last Update April 26, 2026
 
 
-1. Architect agent doesn't auto-generate habits
 
-Starting field is blank, shows vague message "give me a moment and I'll have a few options for you" but never generates anything
-Expected: habits auto-generate on page load using Crystal Ball session summary
-Involves: app/architect/page.tsx, /api/agents/architect
-2. Habit not posting to UI after creation
-
-After Architect completes, selected habits don't appear on dashboard
-Expected: habit cards visible immediately on dashboard after selection
-Involves: app/dashboard/page.tsx, /api/habits
-3. App doesn't redirect to dashboard on re-entry
-
-Returning users land on habit creation flow instead of dashboard
-Expected: authenticated returning users always land on /dashboard
-Involves: app/page.tsx auth redirect logic
-
-🟠 High Priority Issues
-4. Crystal Ball starting question is off
-
-First question feels generic ("taking care of yourself") even when user specifies something specific like sleep
-Doesn't reflect the user's actual stated goal
-Involves: lib/agents/constellation.ts system prompt
-
-5. Agent conversations too long and not concise
+1. Agent conversations too long and not concise
 
 Too much back and forth, responses not focused enough
 Need to balance depth with efficiency
 Involves: both agent system prompts
 
-6. Onboarding questions too open-ended
 
-Free text fields are hard to respond to on mobile
-Need better balance of multiple choice vs open-ended
-Involves: app/onboarding/
-
-7. No input sanitization or character limits
+1. No input sanitization or character limits
 
 Users could paste massive amounts of text into input fields
 Safety concern: harmful habit requests could potentially override Claude safety

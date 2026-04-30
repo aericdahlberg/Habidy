@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "eval:models": "tsx evals/runModelComparison.ts",
+    "eval:prompts": "tsx evals/promptEvaluator.ts",
     "build": "next build",
     "start": "next start",
     "lint": "eslint"

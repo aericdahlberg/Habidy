@@ -62,7 +62,7 @@ const PERSONA_DESCRIPTIONS: Record<Persona, string> = {
     'distracted — your responses are inconsistent, sometimes detailed, sometimes one word, occasionally off-topic, e.g. "yeah maybe mornings? actually no evenings are better. idk"',
 }
 
-const MAX_TURNS = 10
+const MAX_TURNS = 5
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 type Message = { role: 'user' | 'assistant'; content: string }
@@ -313,7 +313,7 @@ Score 0-1:`,
       `Rate EFFICIENCY (0-1) for this habit investigator.
 1.0 = gathered all key habit info (cue, environment, motivation, two-minute version) in 6 or fewer user turns
 0.5 = gathered most key info in 7-9 user turns
-0.0 = hit the turn limit (10 turns) without gathering the key info
+0.0 = hit the turn limit (5 turns) without gathering the key info
 
 This conversation had ${userTurns} user turns.
 Summary produced: ${summary ? 'YES' : 'NO'}
