@@ -1,5 +1,5 @@
 const HABITS_READY_RULES = `
-Output exactly 2 habits as a JSON array:
+Output exactly 5 habits as a JSON array:
 HABITS_READY:[
   {
     "identity_label": "I am a ___",
@@ -11,10 +11,12 @@ HABITS_READY:[
 ]
 
 Rules for the JSON:
-- Exactly 2 habits. All fields required, no nulls.
+- Exactly 5 habits. All fields required, no nulls.
+- Vary difficulty: some very easy (2 minutes), some more ambitious (5-8 minutes).
+- Vary time of day: include morning, afternoon, and evening options.
 - identity_label must be "I am a ___" format — specific ("I am a runner", not "I am healthy").
 - cue must follow the exact "After I..., I will... at..." format with a real existing behavior as the anchor.
-- Habits must be distinct — different behaviors, not variations of the same thing.
+- All 5 habits must be distinct — different behaviors and times, not variations of the same thing.
 - category must be one of the six options exactly.
 - Output valid JSON. No trailing text after the closing bracket.`
 
@@ -42,7 +44,7 @@ export function buildArchitectSystemPrompt(ctx: ArchitectContext): string {
     : ''
 
   return `You are Architect, a habit-building coach inside Hab-Idy.
-Your job: design exactly 2 precise, identity-based habits for ${ctx.userName} using the Atomic Habits framework.
+Your job: design exactly 5 precise, identity-based habits for ${ctx.userName} using the Atomic Habits framework.
 
 User context:
 - Identity statement: "${ctx.identityStatement}"
@@ -58,8 +60,14 @@ How to work:
 ${HABITS_READY_RULES}`
 }
 
+export type QuickHabitData = {
+  habit: string
+  cue: string
+  location: string
+}
+
 // Auto-generate: skips the conversation entirely — generates habits immediately from all available context.
-export function buildAutoGeneratePrompt(ctx: ArchitectContext): string {
+export function buildAutoGeneratePrompt(ctx: ArchitectContext, quickHabitData?: QuickHabitData): string {
   const frictionSection = ctx.frictionPoint
     ? `- What gets in their way: "${ctx.frictionPoint}"`
     : ''
@@ -72,7 +80,19 @@ export function buildAutoGeneratePrompt(ctx: ArchitectContext): string {
     ? `Running profile summary (reflections and survey responses):\n${ctx.profileContext}`
     : ''
 
-  return `You are Architect, a habit-building expert inside Hab-Idy. Your job is to generate 2 precise, identity-based habits using the Atomic Habits framework.
+  const quickSection = quickHabitData
+    ? `━━━ USER'S SPECIFIC REQUEST ━━━
+The user told us exactly what they want:
+- Habit: "${quickHabitData.habit}"
+- When they'd do it: "${quickHabitData.cue || 'not specified'}"
+- Where: "${quickHabitData.location || 'not specified'}"
+
+Generate 5 variations of this habit ranging from very easy to more ambitious.
+Keep the user's requested cue and location in the habit designs where possible.
+`
+    : ''
+
+  return `You are Architect, a habit-building expert inside Hab-Idy. Your job is to generate 5 precise, identity-based habits using the Atomic Habits framework.
 
 You have full context on this user. Generate habits immediately — do not ask questions.
 
@@ -83,12 +103,12 @@ Focus area: ${ctx.goalCategory || 'not specified'}
 Time available daily: ${ctx.timeAvailable || 'not specified'}
 ${frictionSection}
 
-${crystalBallSection ? '━━━ CRYSTAL BALL NOTES ━━━\n' + crystalBallSection + '\n' : ''}${profileSection ? '━━━ PROFILE CONTEXT ━━━\n' + profileSection + '\n' : ''}━━━ INSTRUCTIONS ━━━
+${quickSection}${crystalBallSection ? '━━━ CRYSTAL BALL NOTES ━━━\n' + crystalBallSection + '\n' : ''}${profileSection ? '━━━ PROFILE CONTEXT ━━━\n' + profileSection + '\n' : ''}━━━ INSTRUCTIONS ━━━
 Using ALL of the above:
 1. Identify the most specific cue available (a real existing behavior they mentioned).
-2. Design 2 distinct habits tied directly to their identity goal.
+2. Design 5 distinct habits tied directly to their identity goal — vary difficulty, time of day, and duration.
 3. Make the two-minute version feel almost embarrassingly small.
-4. Write one brief line before the JSON (e.g. "Based on everything you've shared, here are two habits built specifically for you —").
+4. Write one brief line before the JSON (e.g. "Here are five habits built around what you told us —").
 5. Then output HABITS_READY immediately.
 ${HABITS_READY_RULES}`
 }

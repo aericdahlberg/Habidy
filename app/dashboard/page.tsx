@@ -30,12 +30,15 @@ type HabitState = {
   todayCompleted: boolean | null
 }
 
-const CHECKIN_KEY = 'habidy_last_checkin'
 const MS_24H = 24 * 60 * 60 * 1000
 
-function needsCheckIn(): boolean {
+function checkinKey(userId: string) {
+  return `habidy_last_checkin_${userId}`
+}
+
+function needsCheckIn(userId: string): boolean {
   try {
-    const last = localStorage.getItem(CHECKIN_KEY)
+    const last = localStorage.getItem(checkinKey(userId))
     if (!last) return true
     return Date.now() - Number(last) >= MS_24H
   } catch {
@@ -151,7 +154,7 @@ export default function DashboardPage() {
         setHabitStates(states)
 
         // Show swipe check-in if habits exist and haven't checked in today
-        if (activeHabits.length > 0 && needsCheckIn()) {
+        if (activeHabits.length > 0 && needsCheckIn(user.id)) {
           setShowSwipe(true)
         }
 
@@ -188,7 +191,7 @@ export default function DashboardPage() {
 
   const handleSwipeComplete = useCallback(
     async (completedSet: Set<string>) => {
-      localStorage.setItem(CHECKIN_KEY, String(Date.now()))
+      if (userId) localStorage.setItem(checkinKey(userId), String(Date.now()))
       setShowSwipe(false)
       setChecked(completedSet)
 

@@ -6,6 +6,7 @@ import {
   buildAutoGeneratePrompt,
   extractHabitsFromMessage,
   type ArchitectContext,
+  type QuickHabitData,
 } from '@/lib/agents/architect'
 import { adminClient, getProfileContext } from '@/lib/supabase'
 import { logAgentSession } from '@/lib/logger'
@@ -36,10 +37,12 @@ const runArchitect = traceable(
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
-    const { messages, userId, autoGenerate } = body as {
+    const { messages, userId, autoGenerate, mode, quickHabitData } = body as {
       messages: Message[]
       userId?: string
       autoGenerate?: boolean
+      mode?: 'quick' | 'guided' | 'deep'
+      quickHabitData?: QuickHabitData
     }
 
     if (!messages) {
@@ -133,6 +136,7 @@ export async function POST(req: NextRequest) {
     console.log('[Architect] context loaded:', {
       userId,
       autoGenerate: !!autoGenerate,
+      mode: mode ?? 'default',
       hasIdentity: !!ctx.identityStatement,
       hasGoalCategory: !!ctx.goalCategory,
       hasFrictionPoint: !!ctx.frictionPoint,
@@ -143,7 +147,7 @@ export async function POST(req: NextRequest) {
 
     // ── Auto-generate: skip conversation, output habits immediately ───────────
     if (autoGenerate) {
-      const systemPrompt = buildAutoGeneratePrompt(ctx)
+      const systemPrompt = buildAutoGeneratePrompt(ctx, quickHabitData)
 
       const reply = await agentGuard({
         agentName: 'architect',

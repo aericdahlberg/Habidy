@@ -104,7 +104,7 @@ Saves to `sessionStorage` on Done.
 Animated bouncing mascot
 "Building your path…"
 5 pulsing teal dots
-"Getting ready to meet your Identity Gatherer…"
+"Getting your experience ready…"
 ```
 
 On mount:
@@ -112,7 +112,81 @@ On mount:
 2. POSTs to `/api/onboarding` (identity_statement, goal_category, friction_point,
    time_available, profile_name, email, questionnaire)
 3. Clears sessionStorage
-4. After 2.5s → router.replace('/constellation')
+4. After 2.5s → router.replace('/mode-select')
+
+---
+
+## Screen: Mode Select (`/mode-select`)
+
+Background: `bg-gradient-to-b from-purple-50 via-white to-teal-50`
+
+New screen that appears AFTER onboarding loading and BEFORE any agent interaction.
+Cards slide up one by one with staggered framer-motion entrance animations.
+BottomNav is **hidden** on this screen.
+
+```
+Mascot image (centered, 64×64)
+"How do you want to start?"
+"Choose the experience that fits you right now."
+
+Card 1 — ⚡ "I know what I want"
+  Badge: "Quick start"      Subtitle: "2 minutes"
+  Description: "Tell us the habit you have in mind. We'll help you make it stick."
+  Accent: teal (text-primary, border-primary/20)
+  → /quick-habit
+
+Card 2 — 🧭 "Give me some direction"   ← highlighted with ring-2 ring-secondary/30
+  Badge: "Recommended"     Subtitle: "7 minutes"
+  Description: "Answer a few questions and we'll find the right habit for your life."
+  Accent: purple (text-secondary, border-secondary/40)
+  → /constellation
+
+Card 3 — 🔮 "Coach me through it"
+  Badge: "Full experience"  Subtitle: "20 minutes"
+  Description: "A deep dive into your identity, motivations, and what's been getting in your way."
+  Accent: amber (text-amber-600, border-amber-200)
+  → /constellation
+```
+
+On tap:
+- `sessionStorage.setItem('habidy_mode', 'quick' | 'guided' | 'deep')`
+- `POST /api/mode` with chosen mode (saves to users.engagement_mode in DB)
+- Navigate to dest
+
+---
+
+## Screen: Quick Habit (`/quick-habit`)
+
+Background: `bg-gradient-to-b from-teal-50 to-white`
+
+For users who chose "I know what I want". A simple form — NOT a chat interface.
+BottomNav is **hidden** on this screen.
+
+```
+Header: ← Back | "Quick Habit" | "Tell us what you have in mind"
+
+"What habit do you want to build?"
+"Be as specific as you can…"
+
+Field 1 — "What's the habit?" (required, textarea, 200-char limit)
+  Placeholder: "e.g. Read 10 minutes before bed, drink 6 glasses of water a day"
+
+Field 2 — "When would you do it?" (optional, input, 200-char limit)
+  Placeholder: "e.g. After my morning coffee, before I open my phone"
+
+Field 3 — "Where?" (optional, input, 200-char limit)
+  Placeholder: "e.g. At my desk, in bed, at the gym"
+
+[Build my habit →]  (disabled until Field 1 filled)
+
+Loading state: "Designing 5 habit options tailored to you…"
+```
+
+On submit:
+1. Saves to sessionStorage: `habidy_quick_habit`, `habidy_quick_cue`, `habidy_quick_location`
+2. POSTs to `/api/agents/architect` with `{ mode: 'quick', autoGenerate: true, quickHabitData: { habit, cue, location } }`
+3. Stores response in `sessionStorage('habidy_pregenerated_habits')`
+4. Redirects to `/architect` which reads the pre-generated habits (skips auto-generate)
 
 ---
 
@@ -126,7 +200,8 @@ Background: `bg-gradient-to-b from-teal-50 to-white`
 Header:
   Mascot image (rounded, 40×40)
   "Identity Gatherer"
-  "Your habit investigator"
+  Mode subtitle (e.g. "5 questions" or "15 questions")
+  Turn counter pill (top-right, e.g. "Question 3 of 5") — amber when last 2 remain
 
 Chat area (ChatInterface.tsx):
   Agent message bubbles: white card with border + drop shadow
@@ -138,7 +213,16 @@ Chat area (ChatInterface.tsx):
 [Build my habit →] handoff button → /architect
 ```
 
-Rules: 10-turn cap per session. Opening question auto-generated from user context.
+**Three Modes** (set by `/mode-select`, stored in `sessionStorage('habidy_mode')`):
+
+| Mode | Max turns | Prompt style |
+|---|---|---|
+| `guided` | 5 | Focused — 5 targeted questions on cue, energy, blocker, reward |
+| `deep` | 15 | Full coaching — identity, behavior, environment, blockers, motivation |
+| (default) | 5 | Same as guided — used when navigating to /constellation directly |
+
+Mode is sent in every API call via `extraPayload: { mode }`.
+Turn counter shows "Question X of Y" when mode is guided or deep.
 Always accessible from BottomNav Coach tab — not just first time.
 
 ---
@@ -146,32 +230,51 @@ Always accessible from BottomNav Coach tab — not just first time.
 ## Screen: Architect (`/architect`)
 
 Background: `bg-gradient-to-b from-purple-50 to-white`
+No BottomNav (replaced by floating selection bar).
 
 ```
 Header:
   🔨 emoji in teal circle
   "Architect"
-  "Building your habits" → "Choose your habits" (after HABITS_READY)
+  "Tap ♥ to choose your habits"   (subtitle when habits ready)
+  "X / 5" counter (top-right)
 
-Phase 1 — Chat (same ChatInterface as constellation)
+Loading state:
+  Bouncing mascot + "Building your habits…" + "Designing 5 options tailored to you"
 
-Phase 2 — Habit selection (replaces chat when HABITS_READY detected)
-  2–3 habit cards, Lovable card design:
+Habit carousel (embla-carousel-react, one card at a time):
 
-  ┌──────────────────────────────────────────┐
-  │ I AM A DAILY RUNNER          (label)     │
-  │ Kitchen Table Wind-Down      (name bold) │
-  │ After I brush my teeth...    (cue)       │
-  │ ┌─────────────────────────────┐          │
-  │ │ Start with: Walk to the door│          │
-  │ └─────────────────────────────┘          │
-  │                              [●] check  │
-  └──────────────────────────────────────────┘
+  ┌────────────────────────────────────┐
+  │████████ (category color bar, top)  │
+  │                                    │
+  │ I AM A DAILY READER    (label)     │
+  │ Morning Page Habit     (name, 2xl) │
+  │                                    │
+  │ After I make coffee,               │
+  │ I will read at my desk.  (cue)     │
+  │                                    │
+  │ ┌──────────────────────────────┐   │
+  │ │ Start with: Read 1 paragraph │   │
+  │ └──────────────────────────────┘   │
+  │ Career & Learning  (pill)          │
+  │                                    │
+  │  [♥ Choose this habit]             │
+  └────────────────────────────────────┘
 
-  Cards pre-selected. Tap to toggle.
-  Category-colored border + background when selected.
+  ◀  ● ● ○ ○ ○  ▶       (arrows + dots)
 
-  [Start these N habits →] button → saves via POST /api/habits → /dashboard
+  "Regenerate all" link at bottom
+
+Selection rules:
+  - Tap heart button to select/deselect
+  - Max 2 selections enforced — 3rd tap shows Sonner toast:
+    "You can only pick 2 habits to start. Deselect one to choose this one."
+  - Selected dots show at 40% opacity in indicator row
+  - Selected card gets primary-colored border + shadow
+
+Floating bottom bar (AnimatePresence, springs up when ≥1 selected):
+  [Start this habit →] / [Start these 2 habits →]
+  "You can pick N more" hint below button
 ```
 
 ---
@@ -384,6 +487,8 @@ Fixed at bottom. White `bg-white/95`, `backdrop-blur-md`, subtle `border-t borde
 ```
 
 Active tab: teal (`text-primary`). Inactive: muted gray. Font size 10px to fit 5 tabs.
+
+**Hidden on:** `/mode-select`, `/quick-habit` (returns null — these are full-screen flow screens).
 
 ---
 

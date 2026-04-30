@@ -4,17 +4,25 @@ import { agentGuard } from '@/lib/agentGuard'
 import { logAgentSession } from '@/lib/logger'
 import {
   buildIdentityGathererSystemPrompt,
+  buildGuidedSystemPrompt,
+  buildDeepSystemPrompt,
   buildForcedSummaryPrompt,
   type OnboardingContext,
+  type IdentityGathererContext,
 } from '@/lib/agents/constellation'
 import { adminClient, getProfileContext } from '@/lib/supabase'
 import { traceable } from '@/lib/langsmith'
 
 const supabase = adminClient()
 const AGENT_MODEL = resolveModel()
-const MAX_TURNS = 10
-const WRAP_UP_AT = 2
 const SUMMARY_MARKER = 'IDENTITY_GATHERER_SUMMARY:'
+
+const MODE_CONFIG = {
+  guided: { maxTurns: 5,  wrapUpAt: 1 },
+  deep:   { maxTurns: 15, wrapUpAt: 2 },
+  default:{ maxTurns: 5,  wrapUpAt: 1 },
+} as const
+type ConstellationMode = 'guided' | 'deep'
 
 const runIdentityGatherer = traceable(
   async (
@@ -36,18 +44,20 @@ type OnboardingFallback = Partial<OnboardingContext>
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
-    const { messages, userId, onboardingFallback } = body as {
+    const { messages, userId, onboardingFallback, mode } = body as {
       messages: Message[]
       userId?: string
       onboardingFallback?: OnboardingFallback
+      mode?: ConstellationMode
     }
 
     if (!messages) {
       return NextResponse.json({ error: 'messages required' }, { status: 400 })
     }
 
+    const { maxTurns, wrapUpAt } = MODE_CONFIG[mode ?? 'default'] ?? MODE_CONFIG.default
     const turnsUsed = messages.filter((m) => m.role === 'user').length
-    const turnsRemaining = MAX_TURNS - turnsUsed
+    const turnsRemaining = maxTurns - turnsUsed
 
     // ── Load user row from DB ──────────────────────────────────────────────────
     let userRow: Record<string, unknown> | null = null
@@ -112,7 +122,7 @@ export async function POST(req: NextRequest) {
     })
 
     // ── Limit reached: force-generate summary ─────────────────────────────────
-    if (turnsUsed >= MAX_TURNS) {
+    if (turnsUsed >= maxTurns) {
       if (userId) {
         try {
           const forcedSummary = await agentGuard({
@@ -172,10 +182,14 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // ── Build system prompt ───────────────────────────────────────────────────
-    let systemPrompt = buildIdentityGathererSystemPrompt({ onboarding, profileContext })
+    // ── Build system prompt based on mode ────────────────────────────────────
+    const gathererCtx: IdentityGathererContext = { onboarding, profileContext }
+    let systemPrompt =
+      mode === 'deep'   ? buildDeepSystemPrompt(gathererCtx) :
+      mode === 'guided' ? buildGuidedSystemPrompt(gathererCtx) :
+                          buildIdentityGathererSystemPrompt(gathererCtx)
 
-    if (turnsRemaining <= WRAP_UP_AT) {
+    if (turnsRemaining <= wrapUpAt) {
       systemPrompt += `\n\n[SYSTEM: ${turnsRemaining} exchange${turnsRemaining === 1 ? '' : 's'} remaining. Write your closing recap now — 3–4 sentences covering who they want to become, what's been getting in the way, and what kind of habit would fit their life. End with "Ready to build your first habit around this?" Then output the IDENTITY_GATHERER_SUMMARY JSON on the next line. Do not leave any field blank.]`
     }
 

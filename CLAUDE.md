@@ -47,11 +47,15 @@ NEW USER ONBOARDING (6 screens)
   /onboarding/philosophy  → Brand story: identity-first habits, 1% better
   /onboarding/identity    → "How do you describe yourself today and in 1 year?"
   /onboarding/questionnaire → 3-page survey: focus, day structure, existing habits
-  /onboarding/loading     → Saves data to DB, then redirects to /constellation
+  /onboarding/loading     → Saves data to DB, then redirects to /mode-select
+
+MODE SELECTION + QUICK FLOW
+  /mode-select            → Choose engagement mode: quick (2 min) / guided (7 min) / deep (20 min)
+  /quick-habit            → 2-minute form for "I know what I want" mode → pre-generates habits → /architect
 
 AGENTS
-  /constellation          → Identity Gatherer (also onboarding finale for new users)
-  /architect              → Habit builder (outputs 2–3 habit cards)
+  /constellation          → Identity Gatherer — guided (5Q) or deep (15Q) mode based on sessionStorage
+  /architect              → Habit builder — embla carousel, 5 habits, pick up to 2
 
 CORE APP (bottom nav)
   /dashboard              → Morning greeting, motivational quote, progress bar,

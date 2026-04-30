@@ -47,7 +47,7 @@ export default function OnboardingLoading() {
         sessionStorage.removeItem('habidy_onboarding_profile')
         sessionStorage.removeItem('habidy_onboarding_identity')
         sessionStorage.removeItem('habidy_onboarding_questionnaire')
-        setTimeout(() => router.replace('/constellation'), 2500)
+        setTimeout(() => router.replace('/mode-select'), 2500)
         return
       }
 
@@ -86,7 +86,7 @@ export default function OnboardingLoading() {
       sessionStorage.removeItem('habidy_onboarding_identity')
       sessionStorage.removeItem('habidy_onboarding_questionnaire')
 
-      setTimeout(() => router.replace('/constellation'), 2500)
+      setTimeout(() => router.replace('/mode-select'), 2500)
     }
 
     saveAndRedirect()
@@ -130,7 +130,7 @@ export default function OnboardingLoading() {
         animate={{ opacity: 1 }}
         transition={{ delay: 1 }}
       >
-        Getting ready to meet your Identity Gatherer…
+        Getting your experience ready…
       </motion.p>
     </div>
   )

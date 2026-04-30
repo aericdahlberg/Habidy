@@ -33,9 +33,11 @@ All agent routes are wrapped with LangSmith `traceable()` from `lib/langsmith.ts
 
 ### Two Entry Points
 
-1. **Onboarding finale** — new users arrive here directly from `/onboarding/loading` after completing the 6-screen onboarding. Their identity statement, questionnaire answers, and profile are already saved. The agent greets them, digs deeper, and hands off to Architect.
+1. **Onboarding flow** — new users arrive here from `/mode-select` after completing the 6-screen onboarding and choosing "guided" or "deep" mode. Their identity statement, questionnaire answers, and profile are already saved.
 
 2. **Ongoing access** — the Coach tab in BottomNav always links here. Returning users can reflect, revisit their identity, or prep for a new habit build.
+
+> Users who choose "quick" mode go to `/quick-habit` instead — not here.
 
 ### Purpose
 Investigate the user's identity, motivations, environment, and life context to gather everything Architect needs to build the right habit. The Identity Gatherer does not suggest habits — that is Architect's job.
@@ -47,14 +49,25 @@ Before the user types anything, the Identity Gatherer generates an opening messa
 - Ends with: "So let's start there — who do you want to become?"
 - Tone: warm + educational, not clinical
 
+### Three Prompt Modes
+
+| Mode | Max turns | Wrap-up at | Focus |
+|---|---|---|---|
+| `guided` | 5 | ≤1 remaining | Cue, energy, blocker, reward — efficient |
+| `deep` | 15 | ≤2 remaining | Identity, behavior, environment, blockers, motivation — thorough |
+| `default` | 5 | ≤1 remaining | Same as guided (direct navigation without mode-select) |
+
+Mode is passed in the request body from the frontend. System prompt builder selected accordingly:
+- `guided` → `buildGuidedSystemPrompt(ctx)`
+- `deep` → `buildDeepSystemPrompt(ctx)`
+- anything else → `buildIdentityGathererSystemPrompt(ctx)`
+
 ### Conversation Rules
 - One question per message, never stacked
-- Questions are 2–4 sentences max
 - Reflects the user's exact language back at them
 - Never suggests specific habits
 - References identity framing at start and again in closing recap
-- 10 turns maximum per session
-- Wrap-up hint injected into system prompt at ≤2 turns remaining
+- Wrap-up hint injected into system prompt when turns remaining ≤ wrapUpAt
 
 ### Internal Goals (never announced to user)
 The agent is building answers to six fields:
@@ -69,8 +82,9 @@ The agent is building answers to six fields:
 | `two_minute_version` | The frictionless starting version. Under 2 minutes. Feels almost too easy. |
 
 ### Closing Recap
-When enough info is gathered (turns 6–10) or max turns hit:
-- 3–4 sentence recap: who they want to become, what's in the way, what habit would fit
+When enough info is gathered or max turns hit:
+- Guided: 2–3 sentences then summary JSON
+- Deep: 4–5 sentences then summary JSON
 - Reference their long-term identity: "Based on everything you've shared, it sounds like you're working toward becoming [identity]."
 - End with: "Ready to build your first habit around this?"
 
@@ -106,12 +120,19 @@ IDENTITY_GATHERER_SUMMARY:{"who_they_want_to_be":"...","actions_that_person_take
 **Persona:** Patient, structured, encouraging. Knows the Atomic Habits system cold.
 
 ### Purpose
-Reads the Identity Gatherer session summary and builds 2–3 concrete, identity-based habits tailored to this specific person.
+Reads the Identity Gatherer session summary and builds **exactly 5** concrete, identity-based habit options tailored to this specific person. The user picks up to 2 to start.
 
 ### Behavior
 1. Reads Identity Gatherer session summary from `conversation_memory` (`agent = 'identity-gatherer'`)
 2. Calls `getProfileContext(user_id)` and includes it in the system prompt
-3. Generates exactly **2–3 habits** following the Atomic Habits framework
+3. Generates exactly **5 habits** following the Atomic Habits framework, varied by difficulty, time of day, and duration
+
+### Quick Mode
+When `mode = 'quick'` and `quickHabitData` is present in the request body:
+- Skips the Identity Gatherer session entirely
+- `quickHabitData = { habit, cue, location }` from the `/quick-habit` form
+- Architect generates 5 variations of the user's requested habit, ranging from very easy to more ambitious
+- Habits are pre-generated before the user reaches `/architect`
 
 For each habit, output:
 - `identity_label`: "I am a ___" (short, identity-affirming)
@@ -133,22 +154,26 @@ Step 6 — OUTPUT       HABITS_READY JSON
 
 ### HABITS_READY Detection
 When `HABITS_READY:` is detected in the agent response:
-- Parse the JSON array
-- Replace chat panel with habit selection screen (2–3 Lovable-styled habit cards)
-- Cards are pre-selected; user taps to deselect
-- Category-colored borders + backgrounds
+- Parse the JSON array (5 habits)
+- Route to `/architect` which displays the embla carousel
+- User swipes through cards, taps heart button to select (max 2)
+- Attempting a 3rd selection shows a Sonner toast
+- Floating bottom bar appears when ≥1 selected
 - "Start these N habits →" saves via `POST /api/habits`
 - Routes to `/dashboard` after 1.2s
 
-### Unselected Habits
-Saved to `proposed_habits` with `selected = false`. Surfaces in `/add-habit` after first 7-day streak.
+### All 5 Habits Saved to proposed_habits
+ALL 5 generated habits are saved to `proposed_habits` with `selected = false` at generation time.
+When the user selects up to 2 and saves, those are moved to `habits` (active).
+The remaining 3 stay in `proposed_habits` and surface in `/add-habit` after first 7-day streak.
 
 ### Eval Cases
 - Vague identity → ask follow-up, never proceed
-- User wants 1 habit → still generate 2–3 options
+- User wants 1 habit → still generate 5 options with varied difficulty
 - No cue → don't advance to HABITS_READY
 - Identity Gatherer summary empty → continue without it, do not error
 - `getProfileContext` null → continue without it, do not error
+- `quickHabitData` provided → generate 5 variations of the user's requested habit
 
 ---
 

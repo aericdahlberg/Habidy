@@ -13,8 +13,11 @@ const tabs = [
   { id: 'profile', label: 'Profile', icon: User,    path: '/profile'      },
 ]
 
+const HIDDEN_ON = ['/mode-select', '/quick-habit']
+
 export default function BottomNav() {
   const pathname = usePathname()
+  if (HIDDEN_ON.some((p) => pathname.startsWith(p))) return null
 
   return (
     <nav className="fixed bottom-0 left-0 right-0 z-50 border-t border-zinc-100 bg-white/95 backdrop-blur-md shadow-[0_-1px_0_0_rgba(0,0,0,0.04)]">

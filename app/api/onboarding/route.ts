@@ -83,7 +83,6 @@ export async function POST(req: NextRequest) {
       const socialPayload: Record<string, string> = {}
       if (displayName) {
         socialPayload.display_name = displayName
-        socialPayload.profile_name = displayName
       }
       if (normalizedEmail) socialPayload.email = normalizedEmail
 

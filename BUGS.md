@@ -87,9 +87,9 @@ Involves: app/onboarding/, welcome copy
 Separate agents for different app functions
 Research: Claude Code Codex approach vs current setup
 Involves: architecture decision
-19. Habit limit to 2 from Architect
-Currently can select up to 3 — change to max 2
+19.  Habit limit is 2 from Architect
+Currently can select up to 2 — change to max 2, but create 5 potential habits
 Involves: app/architect/page.tsx
-20. Show JSON habit output to user
+20.  Show JSON habit output to user
 Display the structured habit data in a readable, exciting way after creation
 Involves: app/architect/page.tsx

@@ -3,22 +3,25 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
-import { RefreshCw } from 'lucide-react'
-import BottomNav from '@/components/BottomNav'
+import { RefreshCw, Heart, ChevronLeft, ChevronRight } from 'lucide-react'
+import { Toaster, toast } from 'sonner'
+import useEmblaCarousel from 'embla-carousel-react'
 import { supabase } from '@/lib/supabase'
 import type { HabitSuggestionResponse } from '@/components/ChatInterface'
 
-const CATEGORY_STYLES: Record<string, { border: string; bg: string; label: string }> = {
-  'Health & Fitness':  { border: 'border-primary/30',   bg: 'bg-primary/10',   label: 'text-primary'   },
-  'Career & Learning': { border: 'border-secondary/30', bg: 'bg-secondary/10', label: 'text-secondary' },
-  'Relationships':     { border: 'border-accent/30',    bg: 'bg-accent/10',    label: 'text-accent'    },
-  'Creativity':        { border: 'border-secondary/30', bg: 'bg-secondary/10', label: 'text-secondary' },
-  'Mindset & Energy':  { border: 'border-primary/30',   bg: 'bg-primary/10',   label: 'text-primary'   },
-  'Something else':    { border: 'border-border',       bg: 'bg-muted/50',     label: 'text-muted-foreground' },
+const MAX_SELECTION = 2
+
+const CATEGORY_COLORS: Record<string, { bar: string; label: string; bg: string }> = {
+  'Health & Fitness':  { bar: 'bg-primary',   label: 'text-primary',   bg: 'bg-primary/8'   },
+  'Career & Learning': { bar: 'bg-secondary', label: 'text-secondary', bg: 'bg-secondary/8' },
+  'Relationships':     { bar: 'bg-pink-400',  label: 'text-pink-600',  bg: 'bg-pink-50'     },
+  'Creativity':        { bar: 'bg-secondary', label: 'text-secondary', bg: 'bg-secondary/8' },
+  'Mindset & Energy':  { bar: 'bg-primary',   label: 'text-primary',   bg: 'bg-primary/8'   },
+  'Something else':    { bar: 'bg-muted',     label: 'text-muted-foreground', bg: 'bg-muted/50' },
 }
 
-function categoryStyle(category: string) {
-  return CATEGORY_STYLES[category] ?? CATEGORY_STYLES['Something else']
+function categoryColor(cat: string) {
+  return CATEGORY_COLORS[cat] ?? CATEGORY_COLORS['Something else']
 }
 
 type GenerateState = 'loading' | 'ready' | 'error' | 'saving' | 'saved'
@@ -31,11 +34,25 @@ export default function ArchitectPage() {
   const [state, setState] = useState<GenerateState>('loading')
   const [introText, setIntroText] = useState('')
   const [saveError, setSaveError] = useState('')
+  const [currentIdx, setCurrentIdx] = useState(0)
+
+  const [emblaRef, emblaApi] = useEmblaCarousel({ loop: false })
+
+  // Sync embla scroll position to currentIdx
+  useEffect(() => {
+    if (!emblaApi) return
+    const onSelect = () => setCurrentIdx(emblaApi.selectedScrollSnap())
+    emblaApi.on('select', onSelect)
+    return () => { emblaApi.off('select', onSelect) }
+  }, [emblaApi])
 
   const generate = useCallback(async (uid: string) => {
     setState('loading')
     setHabits(null)
     setIntroText('')
+    setSelected(new Set())
+    setCurrentIdx(0)
+
     try {
       const res = await fetch('/api/agents/architect', {
         method: 'POST',
@@ -50,37 +67,56 @@ export default function ArchitectPage() {
       }
 
       if (!res.ok || data.error || !data.habitsReady?.length) {
-        console.error('[Architect] generate failed:', data.error)
         setState('error')
         return
       }
 
       setIntroText(data.message ?? '')
       setHabits(data.habitsReady)
-      setSelected(new Set(data.habitsReady.map((_, i) => i)))
       setState('ready')
-    } catch (err) {
-      console.error('[Architect] generate error:', err)
+    } catch {
       setState('error')
     }
   }, [])
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data: { user } }) => {
-      if (user) {
-        setUserId(user.id)
-        void generate(user.id)
-      } else {
-        setState('error')
+      if (!user) { setState('error'); return }
+      setUserId(user.id)
+
+      // Check for pre-generated habits from quick-habit flow
+      const pregenRaw = sessionStorage.getItem('habidy_pregenerated_habits')
+      if (pregenRaw) {
+        try {
+          const pregenHabits = JSON.parse(pregenRaw) as HabitSuggestionResponse[]
+          const pregenMsg = sessionStorage.getItem('habidy_pregenerated_message') ?? ''
+          sessionStorage.removeItem('habidy_pregenerated_habits')
+          sessionStorage.removeItem('habidy_pregenerated_message')
+          setHabits(pregenHabits)
+          setIntroText(pregenMsg)
+          setState('ready')
+          return
+        } catch {
+          // Fall through to auto-generate
+        }
       }
+
+      void generate(user.id)
     })
   }, [generate])
 
   function toggleHabit(idx: number) {
     setSelected((prev) => {
       const next = new Set(prev)
-      if (next.has(idx)) next.delete(idx)
-      else next.add(idx)
+      if (next.has(idx)) {
+        next.delete(idx)
+      } else {
+        if (next.size >= MAX_SELECTION) {
+          toast('You can only pick 2 habits to start. Deselect one to choose this one.')
+          return prev
+        }
+        next.add(idx)
+      }
       return next
     })
   }
@@ -103,9 +139,7 @@ export default function ArchitectPage() {
       })
 
       const data = await res.json().catch(() => ({})) as { error?: string }
-      if (!res.ok) {
-        throw new Error(data.error ?? 'Could not save habits')
-      }
+      if (!res.ok) throw new Error(data.error ?? 'Could not save habits')
 
       localStorage.removeItem('habidy_active_habit')
       setState('saved')
@@ -118,35 +152,36 @@ export default function ArchitectPage() {
 
   return (
     <div className="flex h-screen flex-col bg-gradient-to-b from-purple-50 to-white">
+      <Toaster position="top-center" richColors />
+
       {/* Header */}
       <header className="flex shrink-0 items-center gap-3 border-b border-border bg-card/80 px-5 pt-12 pb-4 backdrop-blur-sm">
-        <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-xl">
-          🔨
-        </div>
-        <div>
+        <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-xl">🔨</div>
+        <div className="flex-1">
           <h1 className="font-heading text-lg font-extrabold text-foreground">Architect</h1>
           <p className="font-body text-xs text-muted-foreground">
-            {state === 'ready' ? 'Choose your habits' : 'Building your habits'}
+            {state === 'ready' || state === 'saving' ? 'Tap ♥ to choose your habits' : 'Building your habits'}
           </p>
         </div>
+        {(state === 'ready' || state === 'saving') && habits && (
+          <span className="font-body text-xs text-muted-foreground">
+            {currentIdx + 1} / {habits.length}
+          </span>
+        )}
       </header>
 
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 overflow-hidden">
         <AnimatePresence mode="wait">
 
-          {/* Loading state */}
+          {/* Loading */}
           {state === 'loading' && (
             <motion.div
               key="loading"
-              className="flex h-full flex-col items-center justify-center px-6 py-12"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
+              className="flex h-full flex-col items-center justify-center px-6"
+              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
             >
               <motion.img
-                src="/mascot.png"
-                alt="Building habits"
-                className="h-24 w-24 object-contain"
+                src="/mascot.png" alt="Building" className="h-24 w-24 object-contain"
                 animate={{ y: [0, -10, 0] }}
                 transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
               />
@@ -154,13 +189,12 @@ export default function ArchitectPage() {
                 Building your habits…
               </h2>
               <p className="mt-2 font-body text-sm text-muted-foreground text-center max-w-xs">
-                Reviewing your conversation and designing habits tailored to you
+                Designing 5 options tailored to you
               </p>
               <div className="mt-8 flex gap-2">
                 {[0, 1, 2, 3, 4].map((i) => (
                   <motion.div
-                    key={i}
-                    className="h-2.5 w-2.5 rounded-full bg-primary"
+                    key={i} className="h-2.5 w-2.5 rounded-full bg-primary"
                     animate={{ scale: [1, 1.5, 1], opacity: [0.4, 1, 0.4] }}
                     transition={{ duration: 1.2, repeat: Infinity, delay: i * 0.18 }}
                   />
@@ -169,140 +203,177 @@ export default function ArchitectPage() {
             </motion.div>
           )}
 
-          {/* Error state */}
+          {/* Error */}
           {state === 'error' && (
             <motion.div
               key="error"
-              className="flex h-full flex-col items-center justify-center px-6 py-12"
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0 }}
+              className="flex h-full flex-col items-center justify-center px-6"
+              initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
             >
               <p className="text-3xl">😔</p>
               <h2 className="mt-4 font-heading text-xl font-extrabold text-foreground text-center">
                 Couldn&apos;t build your habits
               </h2>
               <p className="mt-2 font-body text-sm text-muted-foreground text-center max-w-xs">
-                Something went wrong while generating. Make sure you&apos;ve completed your Crystal Ball session first.
+                Something went wrong. Make sure you&apos;ve completed your session first.
               </p>
               <button
                 onClick={() => userId && void generate(userId)}
                 className="mt-8 flex items-center gap-2 rounded-full bg-primary px-8 py-3 font-heading text-sm font-bold text-primary-foreground shadow-lg"
               >
-                <RefreshCw size={16} />
-                Try again
+                <RefreshCw size={16} /> Try again
               </button>
               <button
                 onClick={() => router.push('/constellation')}
                 className="mt-3 font-body text-sm text-muted-foreground underline underline-offset-2"
               >
-                Go to Crystal Ball first →
+                Go to Identity Gatherer first →
               </button>
             </motion.div>
           )}
 
-          {/* Habits ready — selection UI */}
+          {/* Carousel */}
           {(state === 'ready' || state === 'saving') && habits && (
             <motion.div
               key="habits"
-              className="mx-auto max-w-lg px-5 py-5 space-y-4"
-              initial={{ opacity: 0, y: 16 }}
-              animate={{ opacity: 1, y: 0 }}
+              className="flex h-full flex-col"
+              initial={{ opacity: 0 }} animate={{ opacity: 1 }}
             >
               {introText && (
-                <p className="font-body text-sm text-muted-foreground leading-relaxed italic">
+                <p className="mx-5 mt-4 font-body text-sm text-muted-foreground leading-relaxed italic line-clamp-2">
                   {introText}
                 </p>
               )}
-              <p className="font-body text-xs text-muted-foreground">
-                Select the habits you want to start.{' '}
-                <span className="text-muted-foreground/60">Unselected ones will be saved for later.</span>
-              </p>
 
-              {habits.map((habit, idx) => {
-                const isSelected = selected.has(idx)
-                const style = categoryStyle(habit.category)
-                return (
-                  <motion.button
-                    key={idx}
-                    onClick={() => toggleHabit(idx)}
-                    className={`w-full rounded-3xl border-2 px-5 py-5 text-left transition-all ${
-                      isSelected ? `${style.border} ${style.bg}` : 'border-border bg-card hover:border-primary/30'
-                    }`}
-                    initial={{ opacity: 0, y: 16 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: idx * 0.1 }}
-                    whileTap={{ scale: 0.99 }}
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="flex-1 min-w-0">
-                        <p className={`text-xs font-semibold uppercase tracking-wide mb-1 ${isSelected ? style.label : 'text-muted-foreground'}`}>
-                          {habit.identity_label}
-                        </p>
-                        <p className="font-heading text-base font-extrabold text-foreground leading-snug">
-                          {habit.habit_name}
-                        </p>
-                        <p className="mt-2 font-body text-sm text-muted-foreground leading-relaxed">
-                          {habit.cue}
-                        </p>
-                        <div className="mt-3 inline-flex items-center gap-1.5 rounded-xl border border-border bg-background/70 px-3 py-1.5">
-                          <span className="font-body text-xs text-muted-foreground">Start with:</span>
-                          <span className="font-body text-xs font-semibold text-foreground">{habit.two_minute_version}</span>
-                        </div>
-                      </div>
-                      <div className={`mt-0.5 shrink-0 flex h-6 w-6 items-center justify-center rounded-full border-2 transition-all ${
-                        isSelected ? 'border-primary bg-primary' : 'border-border bg-card'
-                      }`}>
-                        {isSelected && (
-                          <svg className="h-3.5 w-3.5 text-primary-foreground" fill="none" viewBox="0 0 12 12" stroke="currentColor" strokeWidth={2.5}>
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M2 6l3 3 5-5" />
-                          </svg>
-                        )}
-                      </div>
-                    </div>
-                  </motion.button>
-                )
-              })}
+              {/* Embla carousel */}
+              <div className="flex-1 overflow-hidden pt-3 pb-2" ref={emblaRef}>
+                <div className="flex h-full">
+                  {habits.map((habit, idx) => {
+                    const colors = categoryColor(habit.category)
+                    const isSelected = selected.has(idx)
+                    return (
+                      <div key={idx} className="flex-none w-full px-4 h-full">
+                        <motion.div
+                          className={`relative flex h-full flex-col rounded-3xl border-2 bg-white shadow-sm overflow-hidden transition-all ${
+                            isSelected
+                              ? 'border-primary shadow-primary/20 shadow-md'
+                              : 'border-border'
+                          }`}
+                          initial={{ opacity: 0, scale: 0.96 }}
+                          animate={{ opacity: 1, scale: 1 }}
+                          transition={{ delay: 0.05 }}
+                        >
+                          {/* Category bar */}
+                          <div className={`h-1.5 w-full ${colors.bar}`} />
 
-              <div className="pt-2">
-                {saveError && (
-                  <p className="mb-3 rounded-2xl border border-destructive/30 bg-card px-4 py-3 text-center font-body text-sm text-destructive">
-                    {saveError}
-                  </p>
-                )}
-                <motion.button
-                  onClick={saveHabits}
-                  disabled={selected.size === 0 || state === 'saving' || !userId}
-                  className="w-full rounded-full bg-primary py-4 font-heading text-lg font-bold text-primary-foreground shadow-lg disabled:opacity-40"
-                  whileTap={{ scale: 0.98 }}
-                >
-                  {state === 'saving'
-                    ? 'Saving…'
-                    : `Start ${selected.size === 1 ? 'this habit' : `these ${selected.size} habits`} →`}
-                </motion.button>
-                {selected.size === 0 && (
-                  <p className="mt-2 text-center font-body text-xs text-muted-foreground">Select at least one to continue</p>
-                )}
+                          <div className="flex flex-1 flex-col px-6 py-5 overflow-y-auto">
+                            {/* Identity label */}
+                            <p className={`font-heading text-xs font-bold uppercase tracking-widest ${colors.label}`}>
+                              {habit.identity_label}
+                            </p>
+
+                            {/* Habit name */}
+                            <h2 className="mt-2 font-heading text-2xl font-extrabold leading-tight text-foreground">
+                              {habit.habit_name}
+                            </h2>
+
+                            {/* Cue */}
+                            <p className="mt-4 font-body text-sm leading-relaxed text-muted-foreground">
+                              {habit.cue}
+                            </p>
+
+                            {/* Two-minute version */}
+                            <div className={`mt-5 rounded-2xl ${colors.bg} px-4 py-3`}>
+                              <p className="font-body text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                                Start with
+                              </p>
+                              <p className="mt-1 font-body text-sm font-semibold text-foreground">
+                                {habit.two_minute_version}
+                              </p>
+                            </div>
+
+                            {/* Category */}
+                            <span className={`mt-4 inline-block self-start rounded-full border border-border bg-muted/50 px-3 py-1 font-body text-[11px] text-muted-foreground`}>
+                              {habit.category}
+                            </span>
+
+                            <div className="flex-1" />
+
+                            {/* Heart button */}
+                            <button
+                              onClick={() => toggleHabit(idx)}
+                              className={`mt-4 flex w-full items-center justify-center gap-2 rounded-2xl py-3.5 font-heading text-sm font-bold transition-all ${
+                                isSelected
+                                  ? 'bg-primary text-primary-foreground'
+                                  : 'border-2 border-border bg-white text-muted-foreground hover:border-primary/40 hover:text-primary'
+                              }`}
+                            >
+                              <Heart
+                                size={18}
+                                className="transition-all"
+                                fill={isSelected ? 'currentColor' : 'none'}
+                              />
+                              {isSelected ? 'Selected' : 'Choose this habit'}
+                            </button>
+                          </div>
+                        </motion.div>
+                      </div>
+                    )
+                  })}
+                </div>
               </div>
 
-              {/* Regenerate option */}
+              {/* Prev / Next arrows + dot indicators */}
+              <div className="flex shrink-0 items-center justify-center gap-4 py-3">
+                <button
+                  onClick={() => emblaApi?.scrollPrev()}
+                  disabled={currentIdx === 0}
+                  className="flex h-9 w-9 items-center justify-center rounded-full border border-border bg-white text-muted-foreground disabled:opacity-30 transition-opacity"
+                >
+                  <ChevronLeft size={18} />
+                </button>
+
+                <div className="flex gap-1.5">
+                  {habits.map((_, i) => (
+                    <button
+                      key={i}
+                      onClick={() => emblaApi?.scrollTo(i)}
+                      className={`h-2 rounded-full transition-all ${
+                        i === currentIdx
+                          ? 'w-5 bg-primary'
+                          : selected.has(i)
+                          ? 'w-2 bg-primary/40'
+                          : 'w-2 bg-muted'
+                      }`}
+                    />
+                  ))}
+                </div>
+
+                <button
+                  onClick={() => emblaApi?.scrollNext()}
+                  disabled={currentIdx === habits.length - 1}
+                  className="flex h-9 w-9 items-center justify-center rounded-full border border-border bg-white text-muted-foreground disabled:opacity-30 transition-opacity"
+                >
+                  <ChevronRight size={18} />
+                </button>
+              </div>
+
+              {/* Regenerate */}
               <button
                 onClick={() => userId && void generate(userId)}
-                className="flex w-full items-center justify-center gap-1.5 pt-1 font-body text-xs text-muted-foreground hover:text-foreground"
+                className="flex items-center justify-center gap-1.5 pb-1 font-body text-xs text-muted-foreground hover:text-foreground"
               >
-                <RefreshCw size={12} />
-                Regenerate suggestions
+                <RefreshCw size={11} /> Regenerate all
               </button>
             </motion.div>
           )}
 
-          {/* Saved confirmation */}
+          {/* Saved */}
           {state === 'saved' && (
             <motion.div
               key="saved"
               className="flex h-full items-center justify-center px-4"
-              initial={{ opacity: 0, scale: 0.9 }}
-              animate={{ opacity: 1, scale: 1 }}
+              initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }}
             >
               <div className="w-full max-w-sm rounded-2xl bg-primary px-6 py-4 text-center font-heading text-sm font-bold text-primary-foreground shadow-lg">
                 {selected.size === 1 ? 'Habit saved' : `${selected.size} habits saved`}. Heading to your dashboard…
@@ -313,8 +384,40 @@ export default function ArchitectPage() {
         </AnimatePresence>
       </div>
 
+      {/* Floating selection bar — sits above BottomNav */}
+      <AnimatePresence>
+        {(state === 'ready' || state === 'saving') && selected.size > 0 && (
+          <motion.div
+            initial={{ y: 100, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ y: 100, opacity: 0 }}
+            transition={{ type: 'spring', stiffness: 400, damping: 35 }}
+            className="shrink-0 border-t border-border bg-white/95 backdrop-blur-md px-5 py-3"
+          >
+            {saveError && (
+              <p className="mb-2 text-center font-body text-xs text-destructive">{saveError}</p>
+            )}
+            <button
+              onClick={saveHabits}
+              disabled={state === 'saving'}
+              className="w-full rounded-full bg-primary py-3.5 font-heading text-base font-bold text-primary-foreground shadow-lg disabled:opacity-60"
+            >
+              {state === 'saving'
+                ? 'Saving…'
+                : selected.size === 1
+                ? 'Start this habit →'
+                : `Start these ${selected.size} habits →`}
+            </button>
+            <p className="mt-1 text-center font-body text-[10px] text-muted-foreground">
+              {MAX_SELECTION - selected.size === 0
+                ? 'Maximum selected'
+                : `You can pick ${MAX_SELECTION - selected.size} more`}
+            </p>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       <div className="h-16 shrink-0" />
-      <BottomNav />
     </div>
   )
 }

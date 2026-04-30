@@ -23,6 +23,7 @@ display_name        text                     -- friendly name from onboarding pr
 profile_name        text                     -- same as display_name (alias)
 avatar_url          text                     -- optional profile image URL
 email               text                     -- stored for friend lookup by email
+engagement_mode     text CHECK (engagement_mode IN ('quick', 'guided', 'deep'))
 created_at          timestamptz DEFAULT now()
 ```
 > `new_user` checked at login: true → /welcome → /onboarding, false → /dashboard.
@@ -155,6 +156,12 @@ POST  /api/onboarding
   Saves: identity, goal, profile_name → users.display_name, email → users.email
   Sets: new_user = false
   Note: identity_statement is the only required field
+
+POST  /api/mode
+  Body: { mode: 'quick' | 'guided' | 'deep' }
+  Auth: session cookie (getRouteUser)
+  Saves: users.engagement_mode for the authenticated user
+  Called by: /mode-select page on card tap (fire-and-forget)
 ```
 
 ### Habits

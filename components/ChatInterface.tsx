@@ -3,8 +3,7 @@
 import { useState, useRef, useEffect } from 'react'
 import type { Message } from '@/lib/claude'
 
-const MAX_TURNS = 20
-const WARN_AT_TURNS = 5  // show counter when this many turns remain
+const WARN_AT_TURNS = 2
 
 export type HabitSuggestionResponse = {
   identity_label: string
@@ -25,6 +24,8 @@ type Props = {
   onHabitsReady?: (habits: HabitSuggestionResponse[]) => void
   extraPayload?: Record<string, unknown>
   thinkingLabel?: string
+  maxTurns?: number
+  onTurnsChange?: (turnsUsed: number, turnsRemaining: number) => void
 }
 
 export default function ChatInterface({
@@ -37,13 +38,16 @@ export default function ChatInterface({
   onHabitsReady,
   extraPayload,
   thinkingLabel = 'Thinking...',
+  maxTurns,
+  onTurnsChange,
 }: Props) {
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
   const [showHandoff, setShowHandoff] = useState(false)
   const [habitReady, setHabitReady] = useState(false)
-  const [turnsRemaining, setTurnsRemaining] = useState<number>(MAX_TURNS)
+  const [turnsRemaining, setTurnsRemaining] = useState<number>(maxTurns ?? 20)
+  const [turnsUsed, setTurnsUsed] = useState<number>(0)
   const [limitReached, setLimitReached] = useState(false)
   const bottomRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -99,6 +103,12 @@ export default function ChatInterface({
       // Update turn state
       if (typeof data.turnsRemaining === 'number') {
         setTurnsRemaining(data.turnsRemaining)
+      }
+      if (typeof data.turnsUsed === 'number') {
+        setTurnsUsed(data.turnsUsed)
+        if (typeof data.turnsRemaining === 'number') {
+          onTurnsChange?.(data.turnsUsed, data.turnsRemaining)
+        }
       }
 
       if (data.limitReached) {
@@ -167,7 +177,8 @@ export default function ChatInterface({
     setLimitReached(false)
     setShowHandoff(false)
     setHabitReady(false)
-    setTurnsRemaining(MAX_TURNS)
+    setTurnsUsed(0)
+    setTurnsRemaining(maxTurns ?? 20)
     if (initialMessage) {
       setMessages([{ role: 'assistant', content: initialMessage }])
     } else {
@@ -175,7 +186,7 @@ export default function ChatInterface({
     }
   }
 
-  const showTurnWarning = !limitReached && turnsRemaining <= WARN_AT_TURNS
+  const showTurnWarning = !limitReached && turnsRemaining <= WARN_AT_TURNS && turnsUsed > 0
   const inputDisabled = loading || limitReached
 
   return (
