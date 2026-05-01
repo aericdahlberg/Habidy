@@ -3,21 +3,20 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
-import { RefreshCw, Heart, ChevronLeft, ChevronRight } from 'lucide-react'
+import { RefreshCw, Heart } from 'lucide-react'
 import { Toaster, toast } from 'sonner'
-import useEmblaCarousel from 'embla-carousel-react'
 import { supabase } from '@/lib/supabase'
 import type { HabitSuggestionResponse } from '@/components/ChatInterface'
 
 const MAX_SELECTION = 2
 
 const CATEGORY_COLORS: Record<string, { bar: string; label: string; bg: string }> = {
-  'Health & Fitness':  { bar: 'bg-primary',   label: 'text-primary',   bg: 'bg-primary/8'   },
-  'Career & Learning': { bar: 'bg-secondary', label: 'text-secondary', bg: 'bg-secondary/8' },
-  'Relationships':     { bar: 'bg-pink-400',  label: 'text-pink-600',  bg: 'bg-pink-50'     },
-  'Creativity':        { bar: 'bg-secondary', label: 'text-secondary', bg: 'bg-secondary/8' },
-  'Mindset & Energy':  { bar: 'bg-primary',   label: 'text-primary',   bg: 'bg-primary/8'   },
-  'Something else':    { bar: 'bg-muted',     label: 'text-muted-foreground', bg: 'bg-muted/50' },
+  'Health & Fitness':  { bar: 'bg-emerald-500', label: 'text-emerald-700', bg: 'bg-emerald-50'  },
+  'Career & Learning': { bar: 'bg-blue-500',    label: 'text-blue-700',    bg: 'bg-blue-50'     },
+  'Relationships':     { bar: 'bg-pink-500',    label: 'text-pink-700',    bg: 'bg-pink-50'     },
+  'Creativity':        { bar: 'bg-violet-500',  label: 'text-violet-700',  bg: 'bg-violet-50'   },
+  'Mindset & Energy':  { bar: 'bg-amber-500',   label: 'text-amber-700',   bg: 'bg-amber-50'    },
+  'Something else':    { bar: 'bg-zinc-400',    label: 'text-zinc-600',    bg: 'bg-muted'       },
 }
 
 function categoryColor(cat: string) {
@@ -34,24 +33,12 @@ export default function ArchitectPage() {
   const [state, setState] = useState<GenerateState>('loading')
   const [introText, setIntroText] = useState('')
   const [saveError, setSaveError] = useState('')
-  const [currentIdx, setCurrentIdx] = useState(0)
-
-  const [emblaRef, emblaApi] = useEmblaCarousel({ loop: false })
-
-  // Sync embla scroll position to currentIdx
-  useEffect(() => {
-    if (!emblaApi) return
-    const onSelect = () => setCurrentIdx(emblaApi.selectedScrollSnap())
-    emblaApi.on('select', onSelect)
-    return () => { emblaApi.off('select', onSelect) }
-  }, [emblaApi])
 
   const generate = useCallback(async (uid: string) => {
     setState('loading')
     setHabits(null)
     setIntroText('')
     setSelected(new Set())
-    setCurrentIdx(0)
 
     try {
       const res = await fetch('/api/agents/architect', {
@@ -163,21 +150,16 @@ export default function ArchitectPage() {
             {state === 'ready' || state === 'saving' ? 'Tap ♥ to choose your habits' : 'Building your habits'}
           </p>
         </div>
-        {(state === 'ready' || state === 'saving') && habits && (
-          <span className="font-body text-xs text-muted-foreground">
-            {currentIdx + 1} / {habits.length}
-          </span>
-        )}
       </header>
 
-      <div className="flex-1 overflow-hidden">
+      <div className="flex-1 overflow-y-auto">
         <AnimatePresence mode="wait">
 
           {/* Loading */}
           {state === 'loading' && (
             <motion.div
               key="loading"
-              className="flex h-full flex-col items-center justify-center px-6"
+              className="flex min-h-full flex-col items-center justify-center px-6 py-20"
               initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
             >
               <motion.img
@@ -207,7 +189,7 @@ export default function ArchitectPage() {
           {state === 'error' && (
             <motion.div
               key="error"
-              className="flex h-full flex-col items-center justify-center px-6"
+              className="flex min-h-full flex-col items-center justify-center px-6 py-20"
               initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
             >
               <p className="text-3xl">😔</p>
@@ -232,136 +214,86 @@ export default function ArchitectPage() {
             </motion.div>
           )}
 
-          {/* Carousel */}
+          {/* Card list */}
           {(state === 'ready' || state === 'saving') && habits && (
             <motion.div
               key="habits"
-              className="flex h-full flex-col"
+              className="px-4 pt-4 pb-6 space-y-3"
               initial={{ opacity: 0 }} animate={{ opacity: 1 }}
             >
               {introText && (
-                <p className="mx-5 mt-4 font-body text-sm text-muted-foreground leading-relaxed italic line-clamp-2">
+                <p className="font-body text-sm text-muted-foreground leading-relaxed italic px-1 pb-1">
                   {introText}
                 </p>
               )}
 
-              {/* Embla carousel */}
-              <div className="flex-1 overflow-hidden pt-3 pb-2" ref={emblaRef}>
-                <div className="flex h-full">
-                  {habits.map((habit, idx) => {
-                    const colors = categoryColor(habit.category)
-                    const isSelected = selected.has(idx)
-                    return (
-                      <div key={idx} className="flex-none w-full px-4 h-full">
-                        <motion.div
-                          className={`relative flex h-full flex-col rounded-3xl border-2 bg-white shadow-sm overflow-hidden transition-all ${
-                            isSelected
-                              ? 'border-primary shadow-primary/20 shadow-md'
-                              : 'border-border'
-                          }`}
-                          initial={{ opacity: 0, scale: 0.96 }}
-                          animate={{ opacity: 1, scale: 1 }}
-                          transition={{ delay: 0.05 }}
-                        >
-                          {/* Category bar */}
-                          <div className={`h-1.5 w-full ${colors.bar}`} />
+              {habits.map((habit, idx) => {
+                const colors = categoryColor(habit.category)
+                const isSelected = selected.has(idx)
+                return (
+                  <motion.div
+                    key={idx}
+                    className={`relative overflow-hidden rounded-3xl border-2 bg-white shadow-sm transition-all ${
+                      isSelected ? 'border-primary shadow-primary/20 shadow-md' : 'border-border'
+                    }`}
+                    initial={{ opacity: 0, y: 16 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: idx * 0.07 }}
+                  >
+                    {/* Left color bar */}
+                    <div className={`absolute left-0 top-0 bottom-0 w-1.5 ${colors.bar}`} />
 
-                          <div className="flex flex-1 flex-col px-6 py-5 overflow-y-auto">
-                            {/* Identity label */}
-                            <p className={`font-heading text-xs font-bold uppercase tracking-widest ${colors.label}`}>
-                              {habit.identity_label}
-                            </p>
+                    <div className="pl-6 pr-5 py-5">
+                      {/* Identity label */}
+                      <p className={`font-heading text-[11px] font-bold uppercase tracking-widest ${colors.label}`}>
+                        {habit.identity_label}
+                      </p>
 
-                            {/* Habit name */}
-                            <h2 className="mt-2 font-heading text-2xl font-extrabold leading-tight text-foreground">
-                              {habit.habit_name}
-                            </h2>
+                      {/* Habit name */}
+                      <h2 className="mt-1.5 font-heading text-lg font-extrabold leading-snug text-foreground">
+                        {habit.habit_name}
+                      </h2>
 
-                            {/* Cue */}
-                            <p className="mt-4 font-body text-sm leading-relaxed text-muted-foreground">
-                              {habit.cue}
-                            </p>
+                      {/* Cue */}
+                      <p className="mt-2 font-body text-sm leading-relaxed text-muted-foreground">
+                        {habit.cue}
+                      </p>
 
-                            {/* Two-minute version */}
-                            <div className={`mt-5 rounded-2xl ${colors.bg} px-4 py-3`}>
-                              <p className="font-body text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                                Start with
-                              </p>
-                              <p className="mt-1 font-body text-sm font-semibold text-foreground">
-                                {habit.two_minute_version}
-                              </p>
-                            </div>
-
-                            {/* Category */}
-                            <span className={`mt-4 inline-block self-start rounded-full border border-border bg-muted/50 px-3 py-1 font-body text-[11px] text-muted-foreground`}>
-                              {habit.category}
-                            </span>
-
-                            <div className="flex-1" />
-
-                            {/* Heart button */}
-                            <button
-                              onClick={() => toggleHabit(idx)}
-                              className={`mt-4 flex w-full items-center justify-center gap-2 rounded-2xl py-3.5 font-heading text-sm font-bold transition-all ${
-                                isSelected
-                                  ? 'bg-primary text-primary-foreground'
-                                  : 'border-2 border-border bg-white text-muted-foreground hover:border-primary/40 hover:text-primary'
-                              }`}
-                            >
-                              <Heart
-                                size={18}
-                                className="transition-all"
-                                fill={isSelected ? 'currentColor' : 'none'}
-                              />
-                              {isSelected ? 'Selected' : 'Choose this habit'}
-                            </button>
-                          </div>
-                        </motion.div>
+                      {/* Two-minute version */}
+                      <div className={`mt-3 rounded-2xl ${colors.bg} px-4 py-2.5`}>
+                        <p className="font-body text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                          Start with
+                        </p>
+                        <p className="mt-0.5 font-body text-sm font-semibold text-foreground">
+                          {habit.two_minute_version}
+                        </p>
                       </div>
-                    )
-                  })}
-                </div>
-              </div>
 
-              {/* Prev / Next arrows + dot indicators */}
-              <div className="flex shrink-0 items-center justify-center gap-4 py-3">
-                <button
-                  onClick={() => emblaApi?.scrollPrev()}
-                  disabled={currentIdx === 0}
-                  className="flex h-9 w-9 items-center justify-center rounded-full border border-border bg-white text-muted-foreground disabled:opacity-30 transition-opacity"
-                >
-                  <ChevronLeft size={18} />
-                </button>
+                      {/* Category + heart button row */}
+                      <div className="mt-3 flex items-center justify-between gap-3">
+                        <span className="rounded-full border border-border bg-muted/50 px-3 py-1 font-body text-[11px] text-muted-foreground">
+                          {habit.category}
+                        </span>
+                        <button
+                          onClick={() => toggleHabit(idx)}
+                          className={`flex items-center gap-1.5 rounded-2xl px-4 py-2 font-heading text-sm font-bold transition-all ${
+                            isSelected
+                              ? 'bg-primary text-primary-foreground'
+                              : 'border-2 border-border bg-white text-muted-foreground'
+                          }`}
+                        >
+                          <Heart size={15} fill={isSelected ? 'currentColor' : 'none'} />
+                          {isSelected ? 'Selected' : 'Pick this'}
+                        </button>
+                      </div>
+                    </div>
+                  </motion.div>
+                )
+              })}
 
-                <div className="flex gap-1.5">
-                  {habits.map((_, i) => (
-                    <button
-                      key={i}
-                      onClick={() => emblaApi?.scrollTo(i)}
-                      className={`h-2 rounded-full transition-all ${
-                        i === currentIdx
-                          ? 'w-5 bg-primary'
-                          : selected.has(i)
-                          ? 'w-2 bg-primary/40'
-                          : 'w-2 bg-muted'
-                      }`}
-                    />
-                  ))}
-                </div>
-
-                <button
-                  onClick={() => emblaApi?.scrollNext()}
-                  disabled={currentIdx === habits.length - 1}
-                  className="flex h-9 w-9 items-center justify-center rounded-full border border-border bg-white text-muted-foreground disabled:opacity-30 transition-opacity"
-                >
-                  <ChevronRight size={18} />
-                </button>
-              </div>
-
-              {/* Regenerate */}
               <button
                 onClick={() => userId && void generate(userId)}
-                className="flex items-center justify-center gap-1.5 pb-1 font-body text-xs text-muted-foreground hover:text-foreground"
+                className="flex w-full items-center justify-center gap-1.5 pt-2 font-body text-xs text-muted-foreground hover:text-foreground"
               >
                 <RefreshCw size={11} /> Regenerate all
               </button>
@@ -372,7 +304,7 @@ export default function ArchitectPage() {
           {state === 'saved' && (
             <motion.div
               key="saved"
-              className="flex h-full items-center justify-center px-4"
+              className="flex min-h-full items-center justify-center px-4 py-20"
               initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }}
             >
               <div className="w-full max-w-sm rounded-2xl bg-primary px-6 py-4 text-center font-heading text-sm font-bold text-primary-foreground shadow-lg">
@@ -384,7 +316,7 @@ export default function ArchitectPage() {
         </AnimatePresence>
       </div>
 
-      {/* Floating selection bar — sits above BottomNav */}
+      {/* Floating save bar */}
       <AnimatePresence>
         {(state === 'ready' || state === 'saving') && selected.size > 0 && (
           <motion.div

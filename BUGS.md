@@ -149,3 +149,4 @@ Involves: app/architect/page.tsx
 20.  Show JSON habit output to user
 Display the structured habit data in a readable, exciting way after creation
 Involves: app/architect/page.tsx
+21. Page with information on analytics for identity goals, see picture on phone take april 27-30 for more info on what that couldlook like. Bright colors info exciting
