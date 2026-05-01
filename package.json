@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "eval:agents": "tsx evals/agentEval.ts",
     "eval:models": "tsx evals/runModelComparison.ts",
     "eval:prompts": "tsx evals/promptEvaluator.ts",
     "build": "next build",
