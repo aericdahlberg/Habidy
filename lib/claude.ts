@@ -31,7 +31,7 @@ export type SupportedModel =
   | (typeof OPENAI_MODELS)[number]
 
 /** Default used when AGENT_MODEL env var is absent or blank. */
-export const DEFAULT_MODEL: SupportedModel = 'claude-sonnet-4-5'
+export const DEFAULT_MODEL: SupportedModel = 'claude-sonnet-4-6'
 
 /** Resolve the model to use: env var → passed-in override → default. */
 export function resolveModel(override?: string): SupportedModel {

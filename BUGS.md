@@ -1,8 +1,64 @@
 ## Human readable list of recurring errors or known issues 
 
-#Last Update April 26, 2026
+#Last Update May 1, 2026
 
+---
 
+## 🔴 Blockers — Found in pre-demo sweep (May 1)
+
+**B1. `profile_name` column does not exist in DB — 3 production files break silently**
+`social.sql` only adds `display_name`, `avatar_url`, `email` — never `profile_name`.
+Supabase rejects any `.select()` that includes `profile_name`, setting `data = null`.
+- `app/profile/page.tsx:44` — profile screen shows blank name / email fallback
+- `app/api/agents/architect/route.ts:86` — assert throws, userRow stays null, Architect runs with no user context (no identity, no name)
+- `app/api/agents/constellation/route.ts:75` — same; Crystal Ball coach has no context for returning users
+Fix: remove `profile_name` from all three selects and its `(userRow?.profile_name as string)` fallback references. Replace with `display_name` (already a real column).
+
+**B2. DEFAULT_MODEL was 'claude-sonnet-4-5' (stale) → FIXED**
+`lib/claude.ts:34` defaulted to `claude-sonnet-4-5`. Changed to `claude-sonnet-4-6` per CLAUDE.md.
+Status: ✅ Fixed May 1, 2026
+
+---
+
+## 🟠 High Priority — Found in pre-demo sweep (May 1)
+
+**H1. HABITS_READY regex anchors to end-of-message — parse fails on trailing text**
+`lib/agents/architect.ts:131` uses `/HABITS_READY:(\[[\s\S]+?\])\s*$/`.
+If the model adds any text after the closing `]` (sign-off, emoji), `extractHabitsFromMessage` returns null → architect API returns 500 → user sees error during live demo.
+Fix: remove `\s*$` anchor → `/HABITS_READY:(\[[\s\S]+?\])/`
+
+**H2. `habidy_active_habit` localStorage key is not user-scoped**
+`app/dashboard/page.tsx:104` and `app/architect/page.tsx:144` use a global key with no user ID.
+Same cross-user contamination pattern fixed earlier for `habidy_last_checkin`.
+If accounts are switched during a demo, user A's active habit key leaks to user B until dashboard clears it.
+Fix: scope to `habidy_active_habit_${userId}` same as check-in key.
+
+**H3. Crystal Ball → Architect context handoff not verified end-to-end**
+`app/api/agents/architect/route.ts:111-124` loads `conversation_memory` where `agent='identity-gatherer'`.
+This only works if the constellation route actually SAVES a memory row when summarizing.
+Action: run a full Crystal Ball session and verify the `conversation_memory` row appears in Supabase before demoing the integrated flow.
+
+---
+
+## 🟡 Medium Priority — Found in pre-demo sweep (May 1)
+
+**M1. Eval: forced-summary fallback uses Sonnet without retry wrapping**
+`evals/agentEval.ts` ~line 324 — when the agent doesn't emit `IDENTITY_GATHERER_SUMMARY:` in MAX_TURNS,
+the fallback calls Sonnet directly without the `withRetry` wrapper. Under heavy eval load (24 concurrent
+runs), 429s here propagate as hard failures. Eval-only — does not affect the live app.
+Fix: wrap the forced-summary API call in `withRetry`.
+
+**M2. Eval: MAX_TURNS.guided = 5 too low — forced-summary triggers frequently**
+Guided prompt asks for "5 questions + closing recap" but turn budget is 5.
+Agent uses turn 5 for question 5, never reaches the recap → forced-summary fires almost every run.
+Eval-only.
+Fix: raise MAX_TURNS.guided to 6, or reduce the prompt to 4 questions.
+
+**M3. Eval: opening "Hello" message included in judge transcripts**
+The seed turn `{ role: 'user', content: 'Hello' }` is passed to scoring judges, slightly depressing
+`questionSpecificity` scores (agent greeting counts as a turn). Eval-only.
+
+---
 
 1. Agent conversations too long and not concise
 

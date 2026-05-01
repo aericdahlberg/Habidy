@@ -226,16 +226,38 @@ async function callModel(
 }
 
 // ── Judge (always Anthropic sonnet) ──────────────────────────────────────────
-async function judgeCall(prompt: string): Promise<number> {
+function clampScore(value: unknown): number {
+  const num = typeof value === 'number' ? value : parseFloat(String(value))
+  return isNaN(num) ? 0 : Math.min(1, Math.max(0, num))
+}
+
+function extractJsonObject(text: string): Record<string, unknown> {
+  try {
+    return JSON.parse(text) as Record<string, unknown>
+  } catch {
+    const match = text.match(/\{[\s\S]*\}/)
+    if (!match) return {}
+    try {
+      return JSON.parse(match[0]) as Record<string, unknown>
+    } catch {
+      return {}
+    }
+  }
+}
+
+async function judgeJsonCall<T extends Record<string, number>>(
+  prompt: string,
+  keys: Array<keyof T & string>,
+): Promise<T> {
   const res = await _anthropic.messages.create({
     model: JUDGE_MODEL,
-    max_tokens: 64,
-    system: 'You are an evaluation judge. Respond with ONLY a decimal number between 0 and 1. No explanation, no other text.',
+    max_tokens: 256,
+    system: 'You are an evaluation judge. Respond with ONLY a valid JSON object. Each value must be a decimal number between 0 and 1. No explanation, no other text.',
     messages: [{ role: 'user', content: prompt }],
   })
-  const text = res.content[0].type === 'text' ? res.content[0].text.trim() : '0'
-  const val = parseFloat(text)
-  return isNaN(val) ? 0 : Math.min(1, Math.max(0, val))
+  const text = res.content[0].type === 'text' ? res.content[0].text.trim() : '{}'
+  const parsed = extractJsonObject(text)
+  return Object.fromEntries(keys.map(key => [key, clampScore(parsed[key])])) as T
 }
 
 // ── Persona system prompts ────────────────────────────────────────────────────
@@ -409,70 +431,33 @@ async function scoreGuidedMode(
   mode: EvalMode,
 ): Promise<GuidedScores> {
   const transcript = conversation.map(m => `${m.role.toUpperCase()}: ${m.content}`).join('\n\n')
+  const judged = await judgeJsonCall<Omit<GuidedScores, 'efficiency'>>(`Score this habit-coaching conversation on four criteria.
 
-  const [questionSpecificity, atomicHabitsCoverage, questionSharpness, vagueUserHandling] =
-    await Promise.all([
-      judgeCall(`Rate QUESTION SPECIFICITY (0-1).
+Return exactly this JSON shape:
+{
+  "questionSpecificity": 0.0,
+  "atomicHabitsCoverage": 0.0,
+  "questionSharpness": 0.0,
+  "vagueUserHandling": 0.0
+}
+
+Criteria:
+- questionSpecificity: Do the agent's questions directly reference this user's specific identity and focus area, or are they generic? 1.0 = every question tied to their specific situation; 0.5 = mix; 0.0 = generic questions for any user.
+- atomicHabitsCoverage: Count how many of these 7 elements were meaningfully surfaced, then score elements found / 7: cue, environment, time of day, energy level, two-minute version, reward, craving/motivation. Vague or passing mentions do not count.
+- questionSharpness: Are the agent's messages concise (under 3 sentences), warm, and free of filler language? 1.0 = consistently short, warm, precise; 0.5 = occasionally too long or uses filler; 0.0 = wordy, preachy, or repetitive.
+- vagueUserHandling: User persona was "${persona}". When the user gave short or vague answers, did the agent draw out more useful information? 1.0 = consistently probed with follow-ups; 0.5 = probed sometimes; 0.0 = accepted vague answers throughout.
+
 User identity: "${user.identityStatement}"
 User focus: "${user.focusArea}"
-Do the agent's questions directly reference this user's specific identity and focus area, or are they generic?
-1.0 = every question tied to their specific situation
-0.5 = mix of specific and generic
-0.0 = generic questions for any user
-
-CONVERSATION:
-${transcript}
-
-Score 0-1:`),
-
-      judgeCall(`Rate ATOMIC HABITS COVERAGE (0-1).
-Count how many of these 7 elements were meaningfully surfaced:
-1. Cue — a specific "After I [X]" trigger
-2. Environment — where they are, physical context
-3. Time of day — when specifically this could happen
-4. Energy level — when they have the most capacity
-5. Two-minute version — smallest possible starting habit
-6. Reward — what would make it satisfying for THIS person
-7. Craving/motivation — why they actually want this change
-
-Score = elements found / 7. Vague or passing mentions do not count.
 User's existing habits (potential cues): ${user.existingDailyHabits.join(', ')}
 User's location: ${user.primaryLocation}
 
 CONVERSATION:
-${transcript}
-
-Score 0-1:`),
-
-      judgeCall(`Rate QUESTION SHARPNESS (0-1).
-Are the agent's messages concise (under 3 sentences), warm, and free of filler language?
-1.0 = consistently short, warm, precise — no preamble or padding
-0.5 = occasionally too long or uses filler ("Great!", "That's wonderful!")
-0.0 = wordy, preachy, or repetitive
-
-CONVERSATION:
-${transcript}
-
-Score 0-1:`),
-
-      judgeCall(`Rate VAGUE USER HANDLING (0-1).
-User persona was: "${persona}".
-When the user gave short or vague answers, did the agent draw out more useful information?
-1.0 = consistently probed with follow-ups to extract specifics
-0.5 = probed sometimes but accepted some vague answers
-0.0 = accepted vague answers throughout
-
-CONVERSATION:
-${transcript}
-
-Score 0-1:`),
-    ])
+${transcript}`,
+    ['questionSpecificity', 'atomicHabitsCoverage', 'questionSharpness', 'vagueUserHandling'])
 
   return {
-    questionSpecificity,
-    atomicHabitsCoverage,
-    questionSharpness,
-    vagueUserHandling,
+    ...judged,
     efficiency: scoreEfficiency(turns, mode),
   }
 }
@@ -484,21 +469,34 @@ async function scoreDeepMode(
   turns: number,
 ): Promise<DeepScores> {
   const transcript = conversation.map(m => `${m.role.toUpperCase()}: ${m.content}`).join('\n\n')
-  const [guided, skinInTheGame] = await Promise.all([
-    scoreGuidedMode(conversation, user, persona, turns, 'depth'),
-    judgeCall(`Rate SKIN IN THE GAME (0-1).
-Did the agent explore the emotional WHY — what happens if they don't change, what life looks like if they succeed, personal stakes?
+  const judged = await judgeJsonCall<Omit<DeepScores, 'efficiency'>>(`Score this deeper habit-coaching conversation on five criteria.
+
+Return exactly this JSON shape:
+{
+  "questionSpecificity": 0.0,
+  "atomicHabitsCoverage": 0.0,
+  "questionSharpness": 0.0,
+  "vagueUserHandling": 0.0,
+  "skinInTheGame": 0.0
+}
+
+Criteria:
+- questionSpecificity: Do the agent's questions directly reference this user's specific identity and focus area, or are they generic? 1.0 = every question tied to their specific situation; 0.5 = mix; 0.0 = generic questions for any user.
+- atomicHabitsCoverage: Count how many of these 7 elements were meaningfully surfaced, then score elements found / 7: cue, environment, time of day, energy level, two-minute version, reward, craving/motivation. Vague or passing mentions do not count.
+- questionSharpness: Are the agent's messages concise (under 3 sentences), warm, and free of filler language? 1.0 = consistently short, warm, precise; 0.5 = occasionally too long or uses filler; 0.0 = wordy, preachy, or repetitive.
+- vagueUserHandling: User persona was "${persona}". When the user gave short or vague answers, did the agent draw out more useful information? 1.0 = consistently probed with follow-ups; 0.5 = probed sometimes; 0.0 = accepted vague answers throughout.
+- skinInTheGame: Did the agent explore the emotional why: what happens if they don't change, what life looks like if they succeed, and personal stakes? 1.0 = clearly explored intrinsic motivation, stakes, emotional meaning; 0.5 = touched on motivation but stayed surface-level; 0.0 = never explored deeper motivation or stakes.
+
+User identity: "${user.identityStatement}"
+User focus: "${user.focusArea}"
+User's existing habits (potential cues): ${user.existingDailyHabits.join(', ')}
+User's location: ${user.primaryLocation}
 User's blockers: ${user.blockers.join(', ')}
-1.0 = clearly explored intrinsic motivation, stakes, emotional meaning
-0.5 = touched on motivation but stayed surface-level
-0.0 = never explored deeper motivation or stakes
 
 CONVERSATION:
-${transcript}
-
-Score 0-1:`),
-  ])
-  return { ...guided, skinInTheGame }
+${transcript}`,
+    ['questionSpecificity', 'atomicHabitsCoverage', 'questionSharpness', 'vagueUserHandling', 'skinInTheGame'])
+  return { ...judged, efficiency: scoreEfficiency(turns, 'depth') }
 }
 
 async function scoreArchitect(
@@ -506,76 +504,34 @@ async function scoreArchitect(
   user: EvalDummyUser,
   summary: string,
 ): Promise<ArchitectScores> {
-  const [identityAlignment, habitSpecificity, informationUtilization, journeyDisplay, habitVariety] =
-    await Promise.all([
-      judgeCall(`Rate IDENTITY ALIGNMENT (0-1).
+  return judgeJsonCall<ArchitectScores>(`Score these generated habits on five criteria.
+
+Return exactly this JSON shape:
+{
+  "identityAlignment": 0.0,
+  "habitSpecificity": 0.0,
+  "informationUtilization": 0.0,
+  "journeyDisplay": 0.0,
+  "habitVariety": 0.0
+}
+
+Criteria:
+- identityAlignment: Do the generated habits connect to who this user wants to become? 1.0 = every habit explicitly tied to their identity and focus; 0.5 = loose or partial connection; 0.0 = generic habits unrelated to their identity.
+- habitSpecificity: Does each habit follow "After I [existing behavior], I will [new behavior] at [location/time]"? Is the two-minute version genuinely under 2 minutes? Is the identity label in "I am a [specific role]" format? 1.0 = all habits fully specific with correct format; 0.5 = some formatting issues or one habit is weak; 0.0 = vague, generic, or missing required fields.
+- informationUtilization: Did Architect use the user's existing habits as cue anchors, their location, and energy patterns? 1.0 = habits clearly built from user's real routine and context; 0.5 = some context used but habits could still be generic; 0.0 = generic habits ignoring gathered context.
+- journeyDisplay: Does the output show a compelling path from a tiny daily habit to a larger identity? Does the identity label make the vision tangible and exciting? 1.0 = clear, exciting journey; 0.5 = some vision but not compelling; 0.0 = habits feel like chores with no identity story.
+- habitVariety: Are the 5 habits meaningfully distinct with a clear range from easy to ambitious? Do they span different times of day, contexts, and difficulty levels? 1.0 = 5 distinct habits with clear difficulty range and different contexts; 0.5 = some variety but habits feel too similar; 0.0 = repetitive habits at the same difficulty level.
+
 User identity: "${user.identityStatement}"
 User focus: "${user.focusArea}"
-Do the generated habits connect to who this user wants to become?
-1.0 = every habit explicitly tied to their identity and focus
-0.5 = loose or partial connection
-0.0 = generic habits unrelated to their identity
-
-HABIT OUTPUT:
-${habitOutput}
-
-Score 0-1:`),
-
-      judgeCall(`Rate HABIT SPECIFICITY (0-1).
-Does each habit follow "After I [existing behavior], I will [new behavior] at [location/time]"?
-Is the two-minute version genuinely under 2 minutes?
-Is the identity label in "I am a [specific role]" format?
-1.0 = all habits fully specific with correct format
-0.5 = some formatting issues or one habit is weak
-0.0 = vague, generic, or missing required fields
-
-HABIT OUTPUT:
-${habitOutput}
-
-Score 0-1:`),
-
-      judgeCall(`Rate INFORMATION UTILIZATION (0-1).
-Did Architect use the user's existing habits as cue anchors, their location, energy patterns?
 User's existing habits: ${user.existingDailyHabits.join(', ')}
 User's primary location: ${user.primaryLocation}
 User's peak energy: ${user.peakEnergy}
 Investigation summary: ${summary}
 
-1.0 = habits clearly built from user's real routine and context
-0.5 = some context used but habits could still be generic
-0.0 = generic habits ignoring gathered context
-
 HABIT OUTPUT:
-${habitOutput}
-
-Score 0-1:`),
-
-      judgeCall(`Rate JOURNEY DISPLAY (0-1).
-Does the output show a compelling path from a tiny daily habit to a larger identity?
-Does the identity label ("I am a ___") make the vision tangible and exciting?
-1.0 = clear, exciting journey — identity feels real and achievable
-0.5 = some vision but not compelling
-0.0 = habits feel like chores with no identity story
-
-HABIT OUTPUT:
-${habitOutput}
-
-Score 0-1:`),
-
-      judgeCall(`Rate HABIT VARIETY (0-1).
-Are the 5 habits meaningfully distinct with a clear range from easy to ambitious?
-Do they span different times of day, contexts, and difficulty levels?
-1.0 = 5 distinct habits with clear difficulty range and different contexts
-0.5 = some variety but habits feel too similar
-0.0 = repetitive habits at the same difficulty level
-
-HABIT OUTPUT:
-${habitOutput}
-
-Score 0-1:`),
-    ])
-
-  return { identityAlignment, habitSpecificity, informationUtilization, journeyDisplay, habitVariety }
+${habitOutput}`,
+    ['identityAlignment', 'habitSpecificity', 'informationUtilization', 'journeyDisplay', 'habitVariety'])
 }
 
 // ── Run one combination — parent trace with nested child spans ────────────────
@@ -598,10 +554,18 @@ async function runCombination(
           await convTrace(evalUser)
 
         // ── Score investigator ──────────────────────────────────────────────
-        const guidedScores = await scoreGuidedMode(conversation, evalUser, persona, turns, mode)
         const deepScores = mode === 'depth'
           ? await scoreDeepMode(conversation, evalUser, persona, turns)
           : null
+        const guidedScores = deepScores
+          ? {
+            questionSpecificity: deepScores.questionSpecificity,
+            atomicHabitsCoverage: deepScores.atomicHabitsCoverage,
+            questionSharpness: deepScores.questionSharpness,
+            vagueUserHandling: deepScores.vagueUserHandling,
+            efficiency: deepScores.efficiency,
+          }
+          : await scoreGuidedMode(conversation, evalUser, persona, turns, mode)
 
         // ── Architect generation (child span) ───────────────────────────────
         const crystalBallSummary = summary ?? `Identity: ${evalUser.identityStatement}.`
