@@ -58,6 +58,19 @@ Fix: raise MAX_TURNS.guided to 6, or reduce the prompt to 4 questions.
 The seed turn `{ role: 'user', content: 'Hello' }` is passed to scoring judges, slightly depressing
 `questionSpecificity` scores (agent greeting counts as a turn). Eval-only.
 
+**M4. Onboarding re-trigger wipes user data**
+`app/onboarding/loading/page.tsx` uses `upsert({ onConflict: 'id' })` and reads fields from sessionStorage,
+which is cleared after the first successful save. If the user hits back and re-triggers the loading screen,
+sessionStorage is empty so the upsert overwrites their previously saved identity, goal_category, and
+friction_point with null/empty values. Does not create a duplicate user — same row, same ID — but data is lost.
+Fix: add an early return in `saveAndRedirect()` if `identityStatement` is empty, to prevent an empty upsert.
+
+**M5. "Ghost" auth users with no onboarding data — not a bug, expected behavior**
+Supabase Auth creates a row in `auth.users` at the moment of `signUp()`, before any onboarding completes.
+The `public.users` row is only created when the loading screen fires. Users who sign up but close the browser
+mid-onboarding will have an auth record but no profile data. This is normal and not a code bug — investigated
+May 1, 2026 after seeing a second user appear 6 minutes after a demo signup.
+
 ---
 
 1. Agent conversations too long and not concise
@@ -150,3 +163,5 @@ Involves: app/architect/page.tsx
 Display the structured habit data in a readable, exciting way after creation
 Involves: app/architect/page.tsx
 21. Page with information on analytics for identity goals, see picture on phone take april 27-30 for more info on what that couldlook like. Bright colors info exciting
+22. should we implement a way to make user pay and then give money back when they accomplish goals...? How do we monetize this? Can we monetize this...? 
+23. elevenlabsapi for voice control and discussion.

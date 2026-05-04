@@ -4,9 +4,9 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "eval:agents": "tsx evals/agentEval.ts",
-    "eval:models": "tsx evals/runModelComparison.ts",
-    "eval:prompts": "tsx evals/promptEvaluator.ts",
+    "eval:agents": "tsx evals/agentEval.ts 2>&1 | tee evals/results/agents-$(date +%Y%m%d-%H%M%S).txt",
+    "eval:models": "tsx evals/runModelComparison.ts 2>&1 | tee evals/results/models-$(date +%Y%m%d-%H%M%S).txt",
+    "eval:prompts": "tsx evals/promptEvaluator.ts 2>&1 | tee evals/results/prompts-$(date +%Y%m%d-%H%M%S).txt",
     "build": "next build",
     "start": "next start",
     "lint": "eslint"

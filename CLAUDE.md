@@ -1,5 +1,27 @@
 # CLAUDE.md — Hab-Idy
 
+## MANDATORY WORKFLOW — follow every time
+1. Enter PLAN MODE (Opus) before any non-trivial task
+2. Think through the plan using ultrathink for tasks > 30 min
+3. Get explicit approval before executing
+4. After every file edit: run build → test → lint (hooks handle this)
+5. Never mark a task done until tests pass
+
+## Code rules
+- Max 200 lines per file
+- Write tests alongside every new function
+- Update relevant .md docs after any API/interface change
+
+## Token management
+- /clear between unrelated tasks
+- Break tasks > 2 hours into separate sessions
+- Summarize progress in PROGRESS.md before /clear
+
+## When uncertain
+- Ask clarifying questions BEFORE writing code
+- State your assumptions explicitly
+- If a fix requires > 3 attempts, stop and re-plan
+
 ## What This Is
 
 **Hab-Idy: Designing a Habit & Identity System for Students.**
