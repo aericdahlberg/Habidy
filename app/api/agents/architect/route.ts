@@ -83,7 +83,7 @@ export async function POST(req: NextRequest) {
           fn: async (): Promise<UserResult> => {
             const r = await supabase
               .from('users')
-              .select('id, display_name, profile_name, identity_statement, goal_category, friction_point, time_available')
+              .select('id, display_name, identity_statement, goal_category, friction_point, time_available')
               .eq('id', userId)
               .single()
             return r as UserResult
@@ -97,7 +97,7 @@ export async function POST(req: NextRequest) {
     }
 
     const ctx: ArchitectContext = {
-      userName: (userRow?.display_name as string) ?? (userRow?.profile_name as string) ?? 'Friend',
+      userName: (userRow?.display_name as string) ?? 'Friend',
       identityStatement: (userRow?.identity_statement as string) ?? '',
       goalCategory: (userRow?.goal_category as string) ?? '',
       frictionPoint: (userRow?.friction_point as string) ?? '',

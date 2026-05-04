@@ -6,13 +6,14 @@
 
 ## 🔴 Blockers — Found in pre-demo sweep (May 1)
 
-**B1. `profile_name` column does not exist in DB — 3 production files break silently**
+(RESOLVED) **B1. `profile_name` column does not exist in DB — 3 production files break silently**
 `social.sql` only adds `display_name`, `avatar_url`, `email` — never `profile_name`.
 Supabase rejects any `.select()` that includes `profile_name`, setting `data = null`.
 - `app/profile/page.tsx:44` — profile screen shows blank name / email fallback
 - `app/api/agents/architect/route.ts:86` — assert throws, userRow stays null, Architect runs with no user context (no identity, no name)
 - `app/api/agents/constellation/route.ts:75` — same; Crystal Ball coach has no context for returning users
 Fix: remove `profile_name` from all three selects and its `(userRow?.profile_name as string)` fallback references. Replace with `display_name` (already a real column).
+Status: ✅ Fixed May 4, 2026
 
 **B2. DEFAULT_MODEL was 'claude-sonnet-4-5' (stale) → FIXED**
 `lib/claude.ts:34` defaulted to `claude-sonnet-4-5`. Changed to `claude-sonnet-4-6` per CLAUDE.md.

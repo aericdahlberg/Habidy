@@ -10,7 +10,7 @@ import { supabase } from '@/lib/supabase'
 type ProfileData = {
   identity_statement?: string | null
   goal_category?: string | null
-  profile_name?: string | null
+  display_name?: string | null
 }
 
 type HabitCount = { count: number }
@@ -41,7 +41,7 @@ export default function ProfilePage() {
 
       const { data: row } = await supabase
         .from('users')
-        .select('identity_statement, goal_category, profile_name')
+        .select('identity_statement, goal_category, display_name')
         .eq('id', user.id)
         .maybeSingle()
 
@@ -67,7 +67,7 @@ export default function ProfilePage() {
     router.push('/welcome')
   }
 
-  const displayName = data.profile_name || (email ? email.split('@')[0] : 'Your Profile')
+  const displayName = data.display_name || (email ? email.split('@')[0] : 'Your Profile')
   const initials = displayName
     .split(' ')
     .map((n) => n[0])
@@ -103,7 +103,7 @@ export default function ProfilePage() {
             About you
           </h3>
           <div className="divide-y divide-border">
-            <InfoRow icon={User} label="Name" value={data.profile_name ?? ''} />
+            <InfoRow icon={User} label="Name" value={data.display_name ?? ''} />
             <InfoRow icon={Mail} label="Email" value={email ?? ''} />
           </div>
         </div>

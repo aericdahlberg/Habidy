@@ -48,7 +48,7 @@ const SUMMARY_MARKER = 'IDENTITY_GATHERER_SUMMARY:'
 const BATCH_SIZE = 3
 const BATCH_DELAY_MS = 3_000
 
-const MAX_TURNS: Record<EvalMode, number> = { guided: 5, depth: 15 }
+const MAX_TURNS: Record<EvalMode, number> = { guided: 6, depth: 15 }
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 type EvalModel = typeof EVAL_MODELS[number]
