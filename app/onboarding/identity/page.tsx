@@ -1,16 +1,26 @@
 'use client'
 
-import { useState, type KeyboardEvent } from 'react'
+import { useState, useEffect, type KeyboardEvent } from 'react'
 import { motion } from 'framer-motion'
 import { useRouter } from 'next/navigation'
+import { useOnboardingDraft } from '@/hooks/use-onboarding-draft'
 
 export default function Identity() {
   const router = useRouter()
+  const { draft, loading, save } = useOnboardingDraft()
   const [text, setText] = useState('')
+  const [hydrated, setHydrated] = useState(false)
+
+  useEffect(() => {
+    if (loading || hydrated) return
+    setHydrated(true)
+    if (draft?.identity) setText(draft.identity)
+  }, [loading, draft, hydrated])
 
   const handleContinue = () => {
     if (!text.trim()) return
     sessionStorage.setItem('habidy_onboarding_identity', text.trim())
+    save({ step: 'questionnaire', identity: text.trim() })
     router.push('/onboarding/questionnaire')
   }
 
@@ -19,6 +29,18 @@ export default function Identity() {
       e.preventDefault()
       handleContinue()
     }
+  }
+
+  if (loading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-teal-50 to-purple-50">
+        <div className="flex gap-2">
+          {[0, 1, 2].map((i) => (
+            <div key={i} className="h-3 w-3 rounded-full bg-primary animate-bounce" style={{ animationDelay: `${i * 150}ms` }} />
+          ))}
+        </div>
+      </div>
+    )
   }
 
   return (

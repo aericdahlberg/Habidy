@@ -3,7 +3,9 @@ import { callClaude, resolveModel, Message } from '@/lib/claude'
 import { agentGuard } from '@/lib/agentGuard'
 import {
   buildArchitectSystemPrompt,
-  buildAutoGeneratePrompt,
+  buildAutoGenerateSystemPrompt,
+  buildArchitectUserContext,
+  buildAutoGenerateUserMessage,
   extractHabitsFromMessage,
   type ArchitectContext,
   type QuickHabitData,
@@ -11,6 +13,11 @@ import {
 import { adminClient, getProfileContext } from '@/lib/supabase'
 import { logAgentSession } from '@/lib/logger'
 import { traceable } from '@/lib/langsmith'
+import {
+  FlaggedInputError,
+  sanitizeMessageHistory,
+  sanitizeLatestUserMessage,
+} from '@/lib/sanitize'
 
 const AGENT_MODEL = resolveModel()
 
@@ -47,6 +54,23 @@ export async function POST(req: NextRequest) {
 
     if (!messages) {
       return NextResponse.json({ error: 'messages required' }, { status: 400 })
+    }
+
+    // ── Sanitize incoming messages (flag latest user turn) ────────────────────
+    let safeMessages: Message[]
+    try {
+      safeMessages = sanitizeLatestUserMessage(
+        sanitizeMessageHistory(messages, userId ?? null),
+        userId ?? null,
+      )
+    } catch (err) {
+      if (err instanceof FlaggedInputError) {
+        return NextResponse.json(
+          { error: "I wasn't able to process that message. Please try rephrasing." },
+          { status: 422 },
+        )
+      }
+      throw err
     }
 
     const turnsUsed = messages.filter((m) => m.role === 'user').length
@@ -106,7 +130,6 @@ export async function POST(req: NextRequest) {
       profileContext: null,
     }
 
-    // ── Load Crystal Ball session summary ─────────────────────────────────────
     if (userId) {
       try {
         const { data } = await supabase
@@ -119,11 +142,10 @@ export async function POST(req: NextRequest) {
           .single()
         ctx.crystalBallSummary = (data?.summary as string) ?? ''
       } catch {
-        // No Crystal Ball summary yet — continue without it
+        // No Crystal Ball summary yet
       }
     }
 
-    // ── Load profile context ──────────────────────────────────────────────────
     if (userId) {
       try {
         ctx.profileContext = await getProfileContext(userId)
@@ -132,29 +154,41 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // ── Debug log ─────────────────────────────────────────────────────────────
     console.log('[Architect] context loaded:', {
       userId,
       autoGenerate: !!autoGenerate,
       mode: mode ?? 'default',
       hasIdentity: !!ctx.identityStatement,
-      hasGoalCategory: !!ctx.goalCategory,
-      hasFrictionPoint: !!ctx.frictionPoint,
       hasCrystalBallSummary: !!ctx.crystalBallSummary,
       hasProfileContext: !!ctx.profileContext,
-      crystalBallLength: ctx.crystalBallSummary?.length ?? 0,
     })
 
     // ── Auto-generate: skip conversation, output habits immediately ───────────
     if (autoGenerate) {
-      const systemPrompt = buildAutoGeneratePrompt(ctx, quickHabitData)
+      let userMsg: string
+      try {
+        userMsg = buildAutoGenerateUserMessage(ctx, userId ?? null, quickHabitData)
+      } catch (err) {
+        if (err instanceof FlaggedInputError) {
+          return NextResponse.json(
+            { error: "I wasn't able to process that request. Please try rephrasing." },
+            { status: 422 },
+          )
+        }
+        throw err
+      }
+
+      const systemPrompt = buildAutoGenerateSystemPrompt({
+        hasQuickHabit: !!quickHabitData,
+        hasCrystalBallNotes: !!ctx.crystalBallSummary,
+      })
 
       const reply = await agentGuard({
         agentName: 'architect',
         toolName: 'autoGenerate',
         input: { userId, autoGenerate: true },
         userId: userId ?? null,
-        fn: () => runArchitect(systemPrompt, [], AGENT_MODEL, userId ?? null, 0),
+        fn: () => runArchitect(systemPrompt, [{ role: 'user', content: userMsg }], AGENT_MODEL, userId ?? null, 0),
       })
 
       const habits = extractHabitsFromMessage(reply)
@@ -164,7 +198,6 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: 'Failed to generate habits — no HABITS_READY marker' }, { status: 500 })
       }
 
-      // Save all as proposed_habits, then mark as selected when user picks
       let proposedIds: string[] = []
       if (userId) {
         try {
@@ -187,18 +220,24 @@ export async function POST(req: NextRequest) {
     }
 
     // ── Normal conversational mode ────────────────────────────────────────────
-    let systemPrompt = buildArchitectSystemPrompt(ctx)
+    let systemPrompt = buildArchitectSystemPrompt({ hasCrystalBallNotes: !!ctx.crystalBallSummary })
 
     if (turnsRemaining <= WRAP_UP_AT) {
       systemPrompt += `\n\n[SYSTEM: ${turnsRemaining} exchange${turnsRemaining === 1 ? '' : 's'} remaining. You must write your closing line and output the HABITS_READY JSON array now — even if you have to extrapolate. Do not leave the user with nothing.]`
     }
+
+    const contextBlock = buildArchitectUserContext(ctx, userId ?? null)
+    const finalMessages: Message[] = [
+      { role: 'user', content: contextBlock },
+      ...safeMessages,
+    ]
 
     const reply = await agentGuard({
       agentName: 'architect',
       toolName: 'chat',
       input: { userId: userId ?? null, turnsUsed, turnsRemaining },
       userId: userId ?? null,
-      fn: () => runArchitect(systemPrompt, messages, AGENT_MODEL, userId ?? null, turnsUsed),
+      fn: () => runArchitect(systemPrompt, finalMessages, AGENT_MODEL, userId ?? null, turnsUsed),
     })
 
     const habits = extractHabitsFromMessage(reply)

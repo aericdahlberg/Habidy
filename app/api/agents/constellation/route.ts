@@ -6,12 +6,19 @@ import {
   buildIdentityGathererSystemPrompt,
   buildGuidedSystemPrompt,
   buildDeepSystemPrompt,
-  buildForcedSummaryPrompt,
+  buildForcedSummarySystemPrompt,
+  buildForcedSummaryUserMessage,
+  buildConstellationUserContext,
   type OnboardingContext,
   type IdentityGathererContext,
 } from '@/lib/agents/constellation'
 import { adminClient, getProfileContext } from '@/lib/supabase'
 import { traceable } from '@/lib/langsmith'
+import {
+  FlaggedInputError,
+  sanitizeMessageHistory,
+  sanitizeLatestUserMessage,
+} from '@/lib/sanitize'
 
 const supabase = adminClient()
 const AGENT_MODEL = resolveModel()
@@ -55,6 +62,23 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'messages required' }, { status: 400 })
     }
 
+    // ── Sanitize incoming messages (flag latest user turn) ────────────────────
+    let safeMessages: Message[]
+    try {
+      safeMessages = sanitizeLatestUserMessage(
+        sanitizeMessageHistory(messages, userId ?? null),
+        userId ?? null,
+      )
+    } catch (err) {
+      if (err instanceof FlaggedInputError) {
+        return NextResponse.json(
+          { error: "I wasn't able to process that message. Please try rephrasing." },
+          { status: 422 },
+        )
+      }
+      throw err
+    }
+
     const { maxTurns, wrapUpAt } = MODE_CONFIG[mode ?? 'default'] ?? MODE_CONFIG.default
     const turnsUsed = messages.filter((m) => m.role === 'user').length
     const turnsRemaining = maxTurns - turnsUsed
@@ -85,7 +109,6 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // ── Build onboarding context: DB primary, sessionStorage fallback ──────────
     const fb = onboardingFallback ?? {}
     const onboarding: OnboardingContext = {
       identity: (userRow?.identity_statement as string) || fb.identity || '',
@@ -93,7 +116,6 @@ export async function POST(req: NextRequest) {
       frictionPoint: (userRow?.friction_point as string) || fb.frictionPoint || '',
       timeAvailable: (userRow?.time_available as string) || fb.timeAvailable || '',
       displayName: (userRow?.display_name as string) || fb.displayName || 'Friend',
-      // Rich fields only available from sessionStorage fallback (not in DB columns)
       stickTime: fb.stickTime,
       sleep: fb.sleep,
       stress: fb.stress,
@@ -104,18 +126,10 @@ export async function POST(req: NextRequest) {
       allBlockers: fb.allBlockers,
     }
 
-    // ── Debug log ─────────────────────────────────────────────────────────────
     console.log('[Crystal Ball] context loaded:', {
       userId,
       hasIdentity: !!onboarding.identity,
-      identity: onboarding.identity || '(empty)',
       hasGoalCategory: !!onboarding.goalCategory,
-      goalCategory: onboarding.goalCategory || '(empty)',
-      hasFrictionPoint: !!onboarding.frictionPoint,
-      frictionPoint: onboarding.frictionPoint || '(empty)',
-      hasTimeAvailable: !!onboarding.timeAvailable,
-      hasAnchorHabits: !!(onboarding.anchorHabits?.length),
-      anchorHabits: onboarding.anchorHabits ?? [],
       sourceDB: !!userRow,
       sourceFallback: !!onboardingFallback,
       turnsUsed,
@@ -132,12 +146,14 @@ export async function POST(req: NextRequest) {
             userId,
             fn: () =>
               callClaude({
-                systemPrompt: buildForcedSummaryPrompt({
-                  userName: onboarding.displayName,
-                  identityStatement: onboarding.identity,
-                  conversation: messages,
-                }),
-                messages: [{ role: 'user', content: 'Generate the summary now.' }],
+                systemPrompt: buildForcedSummarySystemPrompt(),
+                messages: [{
+                  role: 'user',
+                  content: buildForcedSummaryUserMessage(
+                    { userName: onboarding.displayName, identityStatement: onboarding.identity, conversation: messages },
+                    userId,
+                  ),
+                }],
                 maxTokens: 512,
                 model: AGENT_MODEL,
               }),
@@ -182,16 +198,28 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // ── Build system prompt based on mode ────────────────────────────────────
+    // ── Build static system prompt + [USER CONTEXT] message ──────────────────
     const gathererCtx: IdentityGathererContext = { onboarding, profileContext }
+    const hasIdentity = !!onboarding.identity
+
     let systemPrompt =
-      mode === 'deep'   ? buildDeepSystemPrompt(gathererCtx) :
-      mode === 'guided' ? buildGuidedSystemPrompt(gathererCtx) :
-                          buildIdentityGathererSystemPrompt(gathererCtx)
+      mode === 'deep'   ? buildDeepSystemPrompt(hasIdentity) :
+      mode === 'guided' ? buildGuidedSystemPrompt(hasIdentity) :
+                          buildIdentityGathererSystemPrompt(hasIdentity)
 
     if (turnsRemaining <= wrapUpAt) {
-      systemPrompt += `\n\n[SYSTEM: ${turnsRemaining} exchange${turnsRemaining === 1 ? '' : 's'} remaining. Write your closing recap now — 3–4 sentences covering who they want to become, what's been getting in the way, and what kind of habit would fit their life. End with "Ready to build your first habit around this?" Then output the IDENTITY_GATHERER_SUMMARY JSON on the next line. Do not leave any field blank.]`
+      systemPrompt += `\n\n[SYSTEM: ${turnsRemaining} exchange${turnsRemaining === 1 ? '' : 's'} remaining. Write your closing recap now and output the IDENTITY_GATHERER_SUMMARY JSON. Do not leave any field blank.]`
     }
+
+    // Context block prepended as the first user message so user-sourced data never
+    // lives in the system prompt (role isolation). No synthetic assistant ack is added:
+    // ChatInterface's opening call sends messages=[] and subsequent calls include the
+    // agent's prior replies, so the sequence must remain [user, asst?, user, asst...].
+    const contextBlock = buildConstellationUserContext(gathererCtx, userId ?? null)
+    const finalMessages: Message[] = [
+      { role: 'user', content: contextBlock },
+      ...safeMessages,
+    ]
 
     // ── Call Claude ───────────────────────────────────────────────────────────
     const reply = await agentGuard({
@@ -199,7 +227,7 @@ export async function POST(req: NextRequest) {
       toolName: 'chat',
       input: { userId: userId ?? null, turnsUsed, turnsRemaining },
       userId: userId ?? null,
-      fn: () => runIdentityGatherer(systemPrompt, messages, AGENT_MODEL, userId ?? null, turnsUsed),
+      fn: () => runIdentityGatherer(systemPrompt, finalMessages, AGENT_MODEL, userId ?? null, turnsUsed),
     })
 
     // ── Detect IDENTITY_GATHERER_SUMMARY marker ───────────────────────────────
@@ -214,7 +242,6 @@ export async function POST(req: NextRequest) {
           try {
             const parsed = JSON.parse(jsonStr)
             parsed.recap = cleanReply
-            // Enrich with onboarding context so Architect has maximum data
             if (onboarding.identity && !parsed.who_they_want_to_be) {
               parsed.who_they_want_to_be = onboarding.identity
             }

@@ -9,7 +9,11 @@ import {
   buildForcedSummaryPrompt,
   type EvalDummyUser,
 } from '../lib/agents/constellation'
-import { buildAutoGeneratePrompt, extractHabitsFromMessage } from '../lib/agents/architect'
+import {
+  buildAutoGenerateSystemPrompt,
+  buildAutoGenerateUserMessage,
+  extractHabitsFromMessage,
+} from '../lib/agents/architect'
 
 // ── Load env ──────────────────────────────────────────────────────────────────
 function loadEnv() {
@@ -309,13 +313,16 @@ async function simulateUserMessage(
 async function _runConversation(
   agentModel: string,
   systemPrompt: string,
+  contextPrefix: Message[],
   user: EvalDummyUser,
   persona: EvalPersona,
   mode: EvalMode,
 ): Promise<{ conversation: Message[]; conversationText: string; summary: string | null; turns: number; forcedSummary: boolean }> {
+  // messages tracks the real user/agent turns (without the context prefix).
+  // contextPrefix is prepended on every callModel call so the agent always sees it.
   const messages: Message[] = []
 
-  const openingText = await callModel(agentModel, systemPrompt, [{ role: 'user', content: 'Hello' }], 512)
+  const openingText = await callModel(agentModel, systemPrompt, [...contextPrefix, { role: 'user', content: 'Hello' }], 512)
   messages.push({ role: 'user', content: 'Hello' })
   messages.push({ role: 'assistant', content: openingText })
 
@@ -327,7 +334,7 @@ async function _runConversation(
     messages.push({ role: 'user', content: userText })
     turns++
 
-    const agentText = await callModel(agentModel, systemPrompt, messages, 512)
+    const agentText = await callModel(agentModel, systemPrompt, [...contextPrefix, ...messages], 512)
     messages.push({ role: 'assistant', content: agentText })
 
     const markerIdx = agentText.indexOf(SUMMARY_MARKER)
@@ -362,8 +369,8 @@ async function _runConversation(
 function makeConversationTrace(agentModel: string, mode: EvalMode, persona: EvalPersona) {
   return traceable(
     async (user: EvalDummyUser) => {
-      const systemPrompt = mode === 'guided' ? getGuidedSystemPrompt(user) : getDeepSystemPrompt(user)
-      return _runConversation(agentModel, systemPrompt, user, persona, mode)
+      const config = mode === 'guided' ? getGuidedSystemPrompt(user) : getDeepSystemPrompt(user)
+      return _runConversation(agentModel, config.systemPrompt, config.contextPrefix, user, persona, mode)
     },
     {
       name: `investigator_conversation`,
@@ -378,7 +385,7 @@ function makeConversationTrace(agentModel: string, mode: EvalMode, persona: Eval
 function makeArchitectTrace(agentModel: string, mode: EvalMode, persona: EvalPersona) {
   return traceable(
     async (user: EvalDummyUser, crystalBallSummary: string) => {
-      const architectPrompt = buildAutoGeneratePrompt({
+      const ctx = {
         userName: 'Friend',
         identityStatement: user.identityStatement,
         goalCategory: user.focusArea,
@@ -386,10 +393,15 @@ function makeArchitectTrace(agentModel: string, mode: EvalMode, persona: EvalPer
         timeAvailable: user.peakEnergy,
         crystalBallSummary,
         profileContext: null,
+      }
+      const systemPrompt = buildAutoGenerateSystemPrompt({
+        hasQuickHabit: false,
+        hasCrystalBallNotes: !!crystalBallSummary,
       })
+      const userMsg = buildAutoGenerateUserMessage(ctx, null)
 
-      const habitOutput = await callModel(agentModel, architectPrompt, [
-        { role: 'user', content: 'Generate my habits now.' },
+      const habitOutput = await callModel(agentModel, systemPrompt, [
+        { role: 'user', content: userMsg },
       ], 1024)
 
       const parsedHabits = (extractHabitsFromMessage(habitOutput) ?? []) as ParsedHabit[]

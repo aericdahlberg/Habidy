@@ -2,6 +2,7 @@
 
 import { motion } from 'framer-motion'
 import { useRouter } from 'next/navigation'
+import { useOnboardingDraft } from '@/hooks/use-onboarding-draft'
 
 const fadeUp = (delay: number) => ({
   initial: { opacity: 0, y: 16 },
@@ -11,6 +12,12 @@ const fadeUp = (delay: number) => ({
 
 export default function Philosophy() {
   const router = useRouter()
+  const { save } = useOnboardingDraft()
+
+  const handleContinue = () => {
+    save({ step: 'identity' })
+    router.push('/onboarding/identity')
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-teal-50 to-purple-50 px-6 pb-12 pt-12">
@@ -66,7 +73,7 @@ export default function Philosophy() {
 
         <motion.div {...fadeUp(0.9)} className="sticky bottom-4">
           <button
-            onClick={() => router.push('/onboarding/identity')}
+            onClick={handleContinue}
             className="h-14 w-full rounded-full bg-primary font-heading text-base font-bold text-primary-foreground shadow-lg transition-transform hover:scale-105 active:scale-95"
           >
             Let&apos;s figure out who you&apos;re becoming

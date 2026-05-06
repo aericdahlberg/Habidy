@@ -80,24 +80,68 @@ PHASE 7 — Observability
   [x] 31. Model comparison eval script (evals/runModelComparison.ts)
   [x] 32. Judge-based scoring (question quality, atomic habits coverage, etc.)
 
+PHASE 7b — Testing Infrastructure
+  [x] 38. Vitest configured (vitest.config.ts, npm test script)
+  [x] 39. sanitize.ts unit tests — 47 tests: injection patterns, false positives, fence escape
+
 PHASE 8 — Polish & Ship
   [ ] 33. End-to-end test: signup → onboarding (6 screens) → constellation
            → architect → select habits → dashboard → SwipeCheckIn → log it
            → swipe up survey → 7 days → /add-habit → explore → social → profile → sign out
   [ ] 34. Mobile responsive — test on physical iOS + Android
   [ ] 35. Loading and error states on all async operations
-  [ ] 36. Deploy to Vercel
+  [x] 36. Deploy to Vercel
   [x] 37. Run supabase/social.sql in production Supabase SQL editor
 
-PHASE 9 — Phase 2 Features
-  [ ] 38. Communities on /social — group habit challenges
-  [ ] 39. RAG knowledge base — embed Atomic Habits content via pgvector
-  [ ] 40. Wire RAG retrieval into agent system prompts
-  [ ] 41. Habit Breaker agent (Analyst) — break bad habits
-  [ ] 42. Google Calendar integration — write habit cues to calendar
-  [ ] 43. Navigator agent — daily planner with energy-aware scheduling
-  [ ] 44. Notion integration — task sync
-  [ ] 45. Push notifications
+PHASE 9 — Polish & Stabilize (complete before new phases)
+  [ ] 33. End-to-end test: full user journey signup → dashboard → add habits → 7-day streak
+  [ ] 34. Mobile responsive — physical iOS + Android
+  [ ] 35. Loading and error states on all async operations
+
+PHASE 10 — Habit Progression & Weekly Check-in (3-month milestone)
+  [ ] 46. Habit phase system — add phase + daysToNextPhase to GET /api/habits
+           Building (0–6d) → Establishing (7–20d) → Maintaining (21+d)
+  [ ] 47. Phase progress bar on HabitCard — label + bar + "X days to next phase"
+  [ ] 48. Phase milestone celebrations at day 7 and day 21
+  [ ] 49. WeeklyCheckIn component — Too Easy / Just Right / Too Hard prompt per habit
+  [ ] 50. POST /api/habits/[id]/difficulty-feedback — saves to habit_difficulty_logs
+  [ ] 51. Level-up path: "Too Easy" → Architect generates harder variation
+  [ ] 52. Scale-down path: "Too Hard" → Architect generates easier variation
+  [ ] 53. Dashboard: weekly completion ring per habit
+  [ ] 54. Dashboard: habit phase progress bar (phase label visible on card)
+
+PHASE 11 — Profile Intelligence
+  [ ] 55. Surface user_profile_context.summary on /profile ("Here's what we know about you")
+  [ ] 56. Behavioral patterns card on /profile — ≥1 data-driven insight from habit_logs
+
+PHASE 12 — Discovery & Recovery Agents
+  [ ] 57. Safari agent — lib/agents/safari.ts + /api/agents/safari + /safari page
+           Activity-driven: what do you enjoy? → find habit opportunities in those activities
+           Handoff to Architect to build selected habit
+  [ ] 58. Habit Breaker agent — lib/agents/habit-breaker.ts + /api/agents/habit-breaker + /habit-breaker page
+           Psychological investigation: blockers, misalignments, cue/pattern/purpose
+           Root cause first, replacement second → handoff to Architect
+  [ ] 59. Coach tab: BottomNav routes to agent selection screen (Constellation / Safari / Habit Breaker)
+
+PHASE 13 — Insights Screen
+  [ ] 60. /insights page — per-habit weekly/monthly charts
+  [ ] 61. Projected progress toward phase milestones
+  [ ] 62. Identity alignment score over time
+
+PHASE 14 — Calendar & Notifications
+  [ ] 63. Google Calendar integration — write habit time blocks to calendar
+  [ ] 64. "Don't break your streak" email reminder — daily check, trigger if no log by evening
+           (Recommended: Resend API — generous free tier, simple setup)
+  [ ] 65. Proactive Habit Breaker entry — notify user after 3+ days habit neglect
+  [ ] 66. Push notifications (PWA service worker)
+  [ ] 67. Navigator agent — energy-aware daily planner (depends on Calendar + energy_logs)
+
+PHASE 15 — Scale (later)
+  [ ] 68. RAG knowledge base — embed Atomic Habits PDF via pgvector
+  [ ] 69. Wire RAG retrieval into Identity Gatherer + Architect system prompts
+  [ ] 70. Communities on /social — group habit challenges
+  [ ] 71. Notion integration — task sync for Navigator
+  [ ] 72. Safari browsable content feed — popularity-ranked habit discovery
 ```
 
 ---

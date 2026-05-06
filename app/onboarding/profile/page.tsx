@@ -1,12 +1,12 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
 import { useRouter } from 'next/navigation'
 import { ChevronDown } from 'lucide-react'
 import { Switch } from '@/components/ui/switch'
 import { cn } from '@/lib/utils'
-import { supabase } from '@/lib/supabase'
+import { useOnboardingDraft } from '@/hooks/use-onboarding-draft'
 
 const GENDER_OPTIONS = ['Male', 'Female', 'Non-binary', 'Prefer not to say']
 
@@ -18,6 +18,7 @@ const dobInputClass =
 
 export default function ProfileSetup() {
   const router = useRouter()
+  const { draft, loading, userEmail, save } = useOnboardingDraft()
 
   const [name, setName] = useState('')
   const [dobDay, setDobDay] = useState('')
@@ -30,6 +31,23 @@ export default function ProfileSetup() {
   const [termsAccepted, setTermsAccepted] = useState(false)
   const [genderOpen, setGenderOpen] = useState(false)
   const [errors, setErrors] = useState<Record<string, string>>({})
+  const [hydrated, setHydrated] = useState(false)
+
+  // Pre-fill form from saved draft (DOB stored as split strings; termsAccepted not persisted).
+  useEffect(() => {
+    if (loading || hydrated) return
+    setHydrated(true)
+    if (!draft?.profile) return
+    const p = draft.profile
+    if (typeof p.name === 'string') setName(p.name)
+    if (typeof p.dobDay === 'string') setDobDay(p.dobDay)
+    if (typeof p.dobMonth === 'string') setDobMonth(p.dobMonth)
+    if (typeof p.dobYear === 'string') setDobYear(p.dobYear)
+    if (typeof p.gender === 'string') setGender(p.gender as string)
+    if (typeof p.address === 'string') setAddress(p.address)
+    if (typeof p.pushNotifications === 'boolean') setPushNotifications(p.pushNotifications)
+    if (typeof p.dataSharing === 'boolean') setDataSharing(p.dataSharing)
+  }, [loading, draft, hydrated])
 
   const parseDob = (): Date | null => {
     const d = parseInt(dobDay, 10)
@@ -52,11 +70,10 @@ export default function ProfileSetup() {
     return Object.keys(e).length === 0
   }
 
-  const handleContinue = async () => {
+  const handleContinue = () => {
     if (!validate()) return
 
-    const { data: { user } } = await supabase.auth.getUser()
-
+    // Save processed form state to sessionStorage for the loading page.
     const profile = {
       name: name.trim(),
       dob: parseDob()!.toISOString(),
@@ -64,11 +81,29 @@ export default function ProfileSetup() {
       address: address.trim(),
       pushNotifications,
       dataSharing,
-      email: user?.email ?? '',
+      email: userEmail,
     }
-
     sessionStorage.setItem('habidy_onboarding_profile', JSON.stringify(profile))
+
+    // Save raw form fields to draft (DOB as strings — avoids timezone parse issues).
+    save({
+      step: 'philosophy',
+      profile: { name: name.trim(), dobDay, dobMonth, dobYear, gender, address: address.trim(), pushNotifications, dataSharing, email: userEmail },
+    })
+
     router.push('/onboarding/philosophy')
+  }
+
+  if (loading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-teal-50 to-purple-50">
+        <div className="flex gap-2">
+          {[0, 1, 2].map((i) => (
+            <div key={i} className="h-3 w-3 rounded-full bg-primary animate-bounce" style={{ animationDelay: `${i * 150}ms` }} />
+          ))}
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -88,9 +123,7 @@ export default function ProfileSetup() {
 
         <div className="mt-8 space-y-5">
           <div>
-            <label className="mb-1.5 block font-heading text-sm font-bold text-foreground">
-              Full Name
-            </label>
+            <label className="mb-1.5 block font-heading text-sm font-bold text-foreground">Full Name</label>
             <input
               value={name}
               onChange={(e) => setName(e.target.value)}
@@ -102,14 +135,12 @@ export default function ProfileSetup() {
           </div>
 
           <div>
-            <label className="mb-1.5 block font-heading text-sm font-bold text-foreground">
-              Date of Birth
-            </label>
+            <label className="mb-1.5 block font-heading text-sm font-bold text-foreground">Date of Birth</label>
             <div className="grid grid-cols-3 gap-3">
               {[
-                { val: dobDay, set: setDobDay, max: 2, placeholder: 'DD', label: 'Day' },
-                { val: dobMonth, set: setDobMonth, max: 2, placeholder: 'MM', label: 'Month' },
-                { val: dobYear, set: setDobYear, max: 4, placeholder: 'YYYY', label: 'Year' },
+                { val: dobDay,   set: setDobDay,   max: 2, placeholder: 'DD',   label: 'Day' },
+                { val: dobMonth, set: setDobMonth, max: 2, placeholder: 'MM',   label: 'Month' },
+                { val: dobYear,  set: setDobYear,  max: 4, placeholder: 'YYYY', label: 'Year' },
               ].map(({ val, set, max, placeholder, label }) => (
                 <div key={label}>
                   <input
@@ -128,18 +159,11 @@ export default function ProfileSetup() {
           </div>
 
           <div>
-            <label className="mb-1.5 block font-heading text-sm font-bold text-foreground">
-              Gender
-            </label>
+            <label className="mb-1.5 block font-heading text-sm font-bold text-foreground">Gender</label>
             <div className="relative">
               <button
                 onClick={() => setGenderOpen(!genderOpen)}
-                className={cn(
-                  inputClass,
-                  'flex items-center justify-between text-left',
-                  !gender && 'text-muted-foreground',
-                  errors.gender && 'border-destructive ring-1 ring-destructive'
-                )}
+                className={cn(inputClass, 'flex items-center justify-between text-left', !gender && 'text-muted-foreground', errors.gender && 'border-destructive ring-1 ring-destructive')}
               >
                 {gender || 'Select gender'}
                 <ChevronDown size={18} className={cn('text-muted-foreground transition-transform', genderOpen && 'rotate-180')} />
@@ -154,12 +178,7 @@ export default function ProfileSetup() {
                     <button
                       key={g}
                       onClick={() => { setGender(g); setGenderOpen(false) }}
-                      className={cn(
-                        'w-full px-4 py-3 text-left font-body text-sm transition-colors hover:bg-muted',
-                        g === gender && 'font-bold text-primary',
-                        idx === 0 && 'rounded-t-xl',
-                        idx === GENDER_OPTIONS.length - 1 && 'rounded-b-xl'
-                      )}
+                      className={cn('w-full px-4 py-3 text-left font-body text-sm transition-colors hover:bg-muted', g === gender && 'font-bold text-primary', idx === 0 && 'rounded-t-xl', idx === GENDER_OPTIONS.length - 1 && 'rounded-b-xl')}
                     >
                       {g}
                     </button>

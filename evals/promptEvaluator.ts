@@ -3,8 +3,8 @@ import * as path from 'path'
 import Anthropic from '@anthropic-ai/sdk'
 import { Client } from 'langsmith'
 import { traceable } from 'langsmith/traceable'
-import { buildIdentityGathererSystemPrompt } from '../lib/agents/constellation'
-import { buildArchitectSystemPrompt, extractHabitsFromMessage } from '../lib/agents/architect'
+import { buildIdentityGathererSystemPrompt, buildConstellationUserContext, type IdentityGathererContext } from '../lib/agents/constellation'
+import { buildArchitectSystemPrompt, buildArchitectUserContext, extractHabitsFromMessage } from '../lib/agents/architect'
 
 // ── Load env ──────────────────────────────────────────────────────────────────
 function loadEnv() {
@@ -131,16 +131,16 @@ async function _runGatherer(
   client: Anthropic,
   identity: string,
 ): Promise<{ conversation: Message[]; summary: string | null; turns: number }> {
-  const systemPrompt = buildIdentityGathererSystemPrompt({
-    onboarding: {
-      identity,
-      goalCategory: '',
-      frictionPoint: '',
-      timeAvailable: '',
-      displayName: 'Friend',
-    },
+  const gathererCtx: IdentityGathererContext = {
+    onboarding: { identity, goalCategory: '', frictionPoint: '', timeAvailable: '', displayName: 'Friend' },
     profileContext: null,
-  })
+  }
+  const systemPrompt = buildIdentityGathererSystemPrompt(!!identity)
+  const contextBlock = buildConstellationUserContext(gathererCtx, null)
+  const contextPrefix = [
+    { role: 'user' as const, content: contextBlock },
+    { role: 'assistant' as const, content: 'Understood. I have the user context.' },
+  ]
 
   const messages: Message[] = []
 
@@ -149,7 +149,7 @@ async function _runGatherer(
     model: AGENT_MODEL,
     max_tokens: 1024,
     system: systemPrompt,
-    messages: [{ role: 'user', content: 'Hello' }],
+    messages: [...contextPrefix, { role: 'user', content: 'Hello' }],
   })
   const openingText = opening.content[0].type === 'text' ? opening.content[0].text : ''
   messages.push({ role: 'user', content: 'Hello' })
@@ -167,7 +167,7 @@ async function _runGatherer(
       model: AGENT_MODEL,
       max_tokens: 1024,
       system: systemPrompt,
-      messages: messages.map((m) => ({ role: m.role, content: m.content })),
+      messages: [...contextPrefix, ...messages.map((m) => ({ role: m.role, content: m.content }))],
     })
     const agentText = agentResp.content[0].type === 'text' ? agentResp.content[0].text : ''
     messages.push({ role: 'assistant', content: agentText })
@@ -204,7 +204,7 @@ async function _runArchitect(
   identity: string,
   summary: string,
 ): Promise<string> {
-  const systemPrompt = buildArchitectSystemPrompt({
+  const ctx = {
     userName: 'Friend',
     identityStatement: identity,
     goalCategory: '',
@@ -212,13 +212,17 @@ async function _runArchitect(
     timeAvailable: '15 minutes',
     crystalBallSummary: summary,
     profileContext: null,
-  })
+  }
+  const systemPrompt = buildArchitectSystemPrompt({ hasCrystalBallNotes: !!summary })
+  const contextBlock = buildArchitectUserContext(ctx, null)
 
   const response = await client.messages.create({
     model: AGENT_MODEL,
     max_tokens: 1024,
     system: systemPrompt,
     messages: [
+      { role: 'user', content: contextBlock },
+      { role: 'assistant', content: 'Understood. I have the user context.' },
       { role: 'user', content: 'Based on everything you know about me, build my habits now.' },
     ],
   })

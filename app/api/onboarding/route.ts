@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { adminClient } from '@/lib/supabase'
+import { sanitizeUserInput, FlaggedInputError } from '@/lib/sanitize'
 
 export async function POST(req: NextRequest) {
   try {
@@ -19,18 +20,45 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'identity_statement is required' }, { status: 400 })
     }
 
-    const allBlockers = Array.isArray(questionnaire?.blockers)
-      ? questionnaire.blockers.join('; ')
-      : (friction_point ?? null)
+    // Sanitize all user-sourced fields before any DB write.
+    let safeIdentity: string
+    let safeGoalCategory: string
+    let safeTimeAvailable: string
+    let safeProfileName: string | null
+    let safeFrictionPoint: string | null
+    try {
+      safeIdentity = sanitizeUserInput(identity_statement, 'identity_statement', user_id ?? null, { maxLength: 500 })
+      safeGoalCategory = sanitizeUserInput(goal_category ?? '', 'goal_category', user_id ?? null, { maxLength: 100 })
+      safeTimeAvailable = sanitizeUserInput(time_available ?? '', 'time_available', user_id ?? null, { maxLength: 50 })
+      safeProfileName = profile_name
+        ? sanitizeUserInput(profile_name, 'profile_name', user_id ?? null, { maxLength: 80 })
+        : null
 
-    const displayName = profile_name ?? null
-    const normalizedEmail = email ? String(email).toLowerCase() : null
+      // Sanitize each blocker individually before joining
+      const rawBlockers: string[] = Array.isArray(questionnaire?.blockers) ? questionnaire.blockers : []
+      const safeBlockers = rawBlockers.map((b: string) =>
+        sanitizeUserInput(b, 'blocker', user_id ?? null, { maxLength: 200 })
+      )
+      safeFrictionPoint = safeBlockers.length > 0
+        ? safeBlockers.join('; ')
+        : sanitizeUserInput(friction_point ?? '', 'friction_point', user_id ?? null, { maxLength: 500 }) || null
+    } catch (err) {
+      if (err instanceof FlaggedInputError) {
+        return NextResponse.json({ error: 'Please rephrase your answer and try again.' }, { status: 422 })
+      }
+      throw err
+    }
+
+    const allBlockers = safeFrictionPoint
+
+    const displayName = safeProfileName
+    const normalizedEmail = email ? String(email).toLowerCase().slice(0, 200) : null
 
     console.log('[/api/onboarding] saving core fields:', {
-      identity_statement,
-      goal_category: goal_category ?? null,
+      identity_statement: safeIdentity,
+      goal_category: safeGoalCategory || null,
       friction_point: allBlockers,
-      time_available: time_available ?? null,
+      time_available: safeTimeAvailable || null,
       user_id: user_id ?? null,
     })
 
@@ -38,10 +66,10 @@ export async function POST(req: NextRequest) {
 
     // ── Step 1: save core identity fields (these columns always exist) ────────
     const corePayload = {
-      identity_statement,
-      goal_category: goal_category ?? null,
+      identity_statement: safeIdentity,
+      goal_category: safeGoalCategory || null,
       friction_point: allBlockers,
-      time_available: time_available ?? null,
+      time_available: safeTimeAvailable || null,
       new_user: false,
     }
 

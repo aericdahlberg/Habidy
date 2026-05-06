@@ -23,12 +23,25 @@ print(ti.get('new_string', '') or ti.get('content', ''))
     while IFS= read -r line; do echo "   $line"; done <<< "$COMPLETED"
     echo ""
     echo "⚠️  Update the relevant doc for each completed task:"
-    echo "   🔴[BUG] or 🟢[BUILD] touching DB schema    → docs/ARCHITECTURE.md"
-    echo "   🔴[BUG] or 🟢[BUILD] touching agents       → docs/AGENTS.md"
-    echo "   🟢[BUILD] new screen or route              → docs/SCREENS.md"
-    echo "   ⚫[INFRA] API route changes                → docs/DATA.md"
-    echo "   ⚫[INFRA] build/deploy changes             → docs/BUILD.md"
-    echo "   (skip if the change is eval-only or has no user-facing surface)"
+    echo "   [BUG] or [BUILD] touching DB schema   → docs/ARCHITECTURE.md"
+    echo "   [BUG] or [BUILD] touching agents       → docs/AGENTS.md"
+    echo "   [BUILD] new screen or route            → docs/SCREENS.md"
+    echo "   [INFRA] API route changes              → docs/DATA.md"
+    echo "   [INFRA] build/deploy changes           → docs/BUILD.md"
+    echo "   (skip if the change is [EVAL]-only or has no user-facing surface)"
+    echo "   Also move the completed item to the ✅ Resolved section in TASKS.md"
+  fi
+
+  if echo "$NEW_CONTENT" | grep -qE '^\- \[~\]'; then
+    IN_PROGRESS=$(echo "$NEW_CONTENT" | grep -E '^\- \[~\]' | sed 's/^- \[~\] //' | head -3)
+    echo "⏳ Task(s) marked in progress — remember to update 🏃 Now sprint section if not already there:"
+    while IFS= read -r line; do echo "   $line"; done <<< "$IN_PROGRESS"
+  fi
+
+  if echo "$NEW_CONTENT" | grep -qE '^\- \[!\]'; then
+    BLOCKED=$(echo "$NEW_CONTENT" | grep -E '^\- \[!\]' | sed 's/^- \[!\] //' | head -3)
+    echo "🚫 Task(s) marked blocked — make sure a reason is noted inline:"
+    while IFS= read -r line; do echo "   $line"; done <<< "$BLOCKED"
   fi
   exit 0
 fi

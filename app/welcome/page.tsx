@@ -3,6 +3,14 @@
 import { useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
+import { loadDraft, deleteDraft } from '@/lib/onboarding-draft'
+
+const DRAFT_STEP_ROUTES: Record<string, string> = {
+  profile:       '/onboarding/profile',
+  philosophy:    '/onboarding/philosophy',
+  identity:      '/onboarding/identity',
+  questionnaire: '/onboarding/questionnaire',
+}
 
 export default function WelcomePage() {
   const router = useRouter()
@@ -19,16 +27,21 @@ export default function WelcomePage() {
         .maybeSingle()
 
       if (data?.new_user === false && data?.identity_statement) {
+        // Completed onboarding — clean up any stale draft and go to dashboard.
+        deleteDraft(user.id)
         router.replace('/dashboard')
-      } else {
-        // Ensure the users row exists — upsert so it's created even if missing.
-        // This is the first time we write this user to our custom users table.
-        await supabase
-          .from('users')
-          .upsert({ id: user.id, new_user: false }, { onConflict: 'id' })
-
-        router.replace('/onboarding')
+        return
       }
+
+      // Ensure the users row exists before checking for a draft.
+      await supabase
+        .from('users')
+        .upsert({ id: user.id, new_user: false }, { onConflict: 'id' })
+
+      // Resume mid-onboarding if a draft exists.
+      const draft = await loadDraft(user.id)
+      const resumeRoute = draft ? (DRAFT_STEP_ROUTES[draft.step] ?? null) : null
+      router.replace(resumeRoute ?? '/onboarding')
     }
     checkAndRedirect()
   }, [router])

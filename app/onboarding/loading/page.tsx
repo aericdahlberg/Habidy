@@ -4,6 +4,7 @@ import { useEffect, useRef } from 'react'
 import { motion } from 'framer-motion'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
+import { deleteDraft } from '@/lib/onboarding-draft'
 
 const dots = [0, 1, 2, 3, 4]
 
@@ -40,6 +41,15 @@ export default function OnboardingLoading() {
       if (questionnaire.energyTime) sessionStorage.setItem('habidy_time_available', questionnaire.energyTime)
       if (profile.name) sessionStorage.setItem('habidy_display_name', profile.name)
       sessionStorage.setItem('habidy_questionnaire', JSON.stringify(questionnaire))
+
+      // Guard: if identityStatement is empty, the temp keys were already cleared by a prior run.
+      // Proceeding would upsert nulls over real DB data — bail out and redirect immediately.
+      if (!identityStatement) {
+        console.warn('[onboarding/loading] identityStatement empty — temp keys already cleared, skipping DB write')
+        if (user?.id) deleteDraft(user.id)
+        router.replace('/mode-select')
+        return
+      }
 
       if (!user?.id) {
         // No auth session after retries — still continue, but onboarding won't save to DB
@@ -85,6 +95,7 @@ export default function OnboardingLoading() {
       sessionStorage.removeItem('habidy_onboarding_profile')
       sessionStorage.removeItem('habidy_onboarding_identity')
       sessionStorage.removeItem('habidy_onboarding_questionnaire')
+      deleteDraft(user.id)
 
       setTimeout(() => router.replace('/mode-select'), 2500)
     }
