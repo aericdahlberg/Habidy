@@ -94,7 +94,7 @@ export default function Questionnaire() {
       setStep(step + 1)
     } else {
       sessionStorage.setItem('habidy_onboarding_questionnaire', JSON.stringify(answers))
-      router.push('/onboarding/loading')
+      router.push('/onboarding/calendar')
     }
   }
 

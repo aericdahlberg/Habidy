@@ -2,22 +2,20 @@ import { adminClient } from '@/lib/supabase'
 
 const GOOGLE_AUTH_URL = 'https://accounts.google.com/o/oauth2/v2/auth'
 const GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token'
-const SCOPES = [
-  'https://www.googleapis.com/auth/calendar',
-  'https://www.googleapis.com/auth/calendar.events',
-].join(' ')
+// calendar.events is all that's needed — auth/calendar is a restricted scope
+// requiring Google verification and is a superset we don't need
+const SCOPES = 'https://www.googleapis.com/auth/calendar.events'
 
-// state encodes userId + origin so callback knows where to redirect back
-export function buildGoogleAuthUrl(userId: string, from: 'onboarding' | 'profile'): string {
-  const state = `${userId}:${from}`
+// state carries nonce + origin; userId comes from the Supabase session in the callback
+export function buildGoogleAuthUrl(nonce: string, from: 'onboarding' | 'profile'): string {
   const params = new URLSearchParams({
     client_id: process.env.GOOGLE_CLIENT_ID!,
-    redirect_uri: `${process.env.NEXT_PUBLIC_APP_URL}/api/auth/google/callback`,
+    redirect_uri: process.env.GOOGLE_REDIRECT_URI!,
     response_type: 'code',
     scope: SCOPES,
     access_type: 'offline',
     prompt: 'consent',
-    state,
+    state: `${nonce}:${from}`,
   })
   return `${GOOGLE_AUTH_URL}?${params.toString()}`
 }
@@ -28,6 +26,13 @@ type TokenResponse = {
   expires_in: number
 }
 
+export class InvalidGrantError extends Error {
+  constructor() {
+    super('invalid_grant')
+    this.name = 'InvalidGrantError'
+  }
+}
+
 export async function exchangeCodeForTokens(code: string): Promise<TokenResponse> {
   const res = await fetch(GOOGLE_TOKEN_URL, {
     method: 'POST',
@@ -36,14 +41,12 @@ export async function exchangeCodeForTokens(code: string): Promise<TokenResponse
       code,
       client_id: process.env.GOOGLE_CLIENT_ID!,
       client_secret: process.env.GOOGLE_CLIENT_SECRET!,
-      redirect_uri: `${process.env.NEXT_PUBLIC_APP_URL}/api/auth/google/callback`,
+      redirect_uri: process.env.GOOGLE_REDIRECT_URI!,
       grant_type: 'authorization_code',
     }),
   })
-  if (!res.ok) {
-    const body = await res.text()
-    throw new Error(`Token exchange failed: ${res.status} ${body}`)
-  }
+  // Log only the status — never the body (may contain reflected sensitive fragments)
+  if (!res.ok) throw new Error(`Token exchange failed: ${res.status}`)
   return res.json() as Promise<TokenResponse>
 }
 
@@ -58,7 +61,11 @@ async function refreshAccessToken(refreshToken: string): Promise<{ access_token:
       grant_type: 'refresh_token',
     }),
   })
-  if (!res.ok) throw new Error(`Token refresh failed: ${res.status}`)
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({})) as { error?: string }
+    if (body.error === 'invalid_grant') throw new InvalidGrantError()
+    throw new Error(`Token refresh failed: ${res.status}`)
+  }
   return res.json() as Promise<{ access_token: string; expires_in: number }>
 }
 
@@ -83,7 +90,8 @@ export async function disconnectCalendar(userId: string): Promise<void> {
   await supabase.from('users').update({ google_calendar_connected: false }).eq('id', userId)
 }
 
-// Returns a valid access token, refreshing if expired. Returns null if not connected.
+// Returns a valid access token, refreshing if expired.
+// Returns null if not connected. Clears tokens on invalid_grant (revoked by user).
 export async function getValidAccessToken(userId: string): Promise<string | null> {
   const supabase = adminClient()
   const { data } = await supabase
@@ -94,7 +102,6 @@ export async function getValidAccessToken(userId: string): Promise<string | null
 
   if (!data) return null
 
-  // Return existing token if still valid (with 5-min buffer)
   if (new Date(data.expires_at) > new Date(Date.now() + 5 * 60 * 1000)) {
     return data.access_token as string
   }
@@ -107,7 +114,11 @@ export async function getValidAccessToken(userId: string): Promise<string | null
       .update({ access_token, expires_at: expiresAt, updated_at: new Date().toISOString() })
       .eq('user_id', userId)
     return access_token
-  } catch {
+  } catch (err) {
+    if (err instanceof InvalidGrantError) {
+      // Token was revoked in Google account settings — clean up so UI reflects reality
+      await disconnectCalendar(userId)
+    }
     return null
   }
 }

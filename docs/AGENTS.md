@@ -258,7 +258,29 @@ This sanitizes `quickHabitData.habit/cue/location` with `flagPatterns: true` —
 ### Behavior
 1. Reads Identity Gatherer session summary from `conversation_memory` (`agent = 'identity-gatherer'`)
 2. Calls `getProfileContext(user_id)` and includes it in the [USER CONTEXT] block
-3. Generates exactly **5 habits** following the Atomic Habits framework, varied by difficulty, time of day, and duration
+3. If user has Google Calendar connected: fetches 2-week event window via `getValidAccessToken` + `getCalendarEvents`, injects as a `[CALENDAR CONTEXT]` fence in the first user message
+4. Generates exactly **5 habits** following the Atomic Habits framework, varied by difficulty, time of day, and duration
+
+### Calendar Context Injection
+
+When the user has Google Calendar connected, a second fence is added to the first user message:
+
+```
+[CALENDAR CONTEXT]
+Events for the next 2 weeks (America/New_York):
+- Mon May 6, 9:00–10:00: Team standup
+- Tue May 7, 18:00–19:30: Gym class
+...
+[/CALENDAR CONTEXT]
+
+Use the calendar above to avoid scheduling habits at conflicting times.
+Set suggested_time based on visible open time blocks.
+```
+
+Event titles are sanitized with `sanitizeUserInput(maxLength:120, flagPatterns:false)` before injection.
+The fence markers are included in `escapeFenceMarkers()` in `lib/sanitize.ts` — hostile event titles cannot escape the fence.
+
+If calendar is not connected, `calendarContext` is `null` and the fence block is omitted.
 
 ### Quick Mode
 When `mode = 'quick'` and `quickHabitData` is present in the request body:
@@ -276,13 +298,32 @@ Step 5 — START SMALL  The 2-minute version
 Step 6 — OUTPUT       HABITS_READY JSON
 ```
 
+### HABITS_READY JSON Shape
+
+Each of the 5 habits in the `HABITS_READY` array must include:
+
+```typescript
+{
+  habit_name: string           // display name
+  identity_label: string       // "I am a ___"
+  cue: string                  // "After X, I will Y at Z"
+  two_minute_version: string   // starter micro-habit
+  category: string             // Health & Fitness | Career & Learning | etc.
+  suggested_time: string       // morning | midday | afternoon | evening | late_night
+                               // used to set the start time of the recurring calendar event
+                               // if missing or invalid, defaults to 'morning' (7am)
+}
+```
+
 ### HABITS_READY Detection
 When `HABITS_READY:` is detected in the agent response:
 - Parse the JSON array (5 habits)
-- Route to `/architect` which displays the embla carousel
-- User swipes through cards, taps heart button to select (max 2)
+- Route to `/architect` which displays the card list
+- User taps heart button to select (max 2)
 - Floating bottom bar appears when ≥1 selected
+- Optional "Add to Google Calendar" toggle shown if user has calendar connected
 - "Start these N habits →" saves via `POST /api/habits`
+- If calendar toggle is on: `POST /api/calendar/habits` creates a recurring daily event per habit
 - Routes to `/dashboard` after 1.2s
 
 ### All 5 Habits Saved to proposed_habits
@@ -377,9 +418,113 @@ Project name controlled by `LANGCHAIN_PROJECT` env var.
 
 ---
 
+---
+
+## Agent 4: Habit Coach
+
+**Files:** `lib/agents/coach/` (directory — index.ts re-exports all)
+- `types.ts` — `RawHabit`, `RawLog`, `RawSurvey`, `RawCalendarEvent`, `WeeklyAnalysis`, `CoachContext`, `CoachProposal`, and supporting types
+- `analysis.ts` — `computeWeeklyAnalysis()` — pure function, no DB calls, fully testable
+- `loader.ts` — `loadCoachContext()` + `loadWeeklyAnalysis()` — DB + calendar fetching
+- `systemPrompts.ts` — `buildCoachSystemPrompt()` (server-determined booleans only)
+- `context.ts` — `buildCoachUserContext()` — builds `[USER CONTEXT]` + `[HABIT ANALYSIS]` fences
+- `proposals.ts` — `extractProposalsFromMessage()` — parses `COACH_PROPOSALS:` marker
+
+**Routes:**
+- `POST /api/agents/coach` — main conversational agent
+- `POST /api/agents/coach/analyze` — standalone analysis (used by future integrations)
+- `POST /api/agents/coach/apply` — applies accepted `COACH_PROPOSALS` to `habits` table
+
+**Page:** `/coach`
+**Background:** `bg-gradient-to-b from-secondary/5 to-background`
+**DB agent key:** `'coach'`
+**Entry point:** `WeeklyReviewCard` on `/dashboard` (appears when `last_coach_review_at` is null or >7 days ago)
+
+### Purpose
+Review last week's completion data, surface patterns, and propose concrete habit adjustments —
+then discuss them with the user before applying anything. All changes require explicit user agreement.
+
+### Weekly Analysis (`computeWeeklyAnalysis`)
+A pure function that takes raw DB rows + calendar events and produces a `WeeklyAnalysis`:
+- Per-habit completion rates, `commonWentWrong` (from survey responses), `calendarConflictDays`
+- `dayOfWeekStats` — which day had the worst completion
+- `proposedAdjustments` — auto-generated from thresholds:
+  - ≥85% → `increase_difficulty`
+  - <50% and ≥2 calendar conflict days → `shift_time`
+  - <40% → `flag_for_discussion`
+
+### Context Fences
+
+The first user message contains three fences:
+```
+[USER CONTEXT]
+name / identity_goal / profile_summary
+[/USER CONTEXT]
+
+[HABIT ANALYSIS]
+week_of / overall / weakest_day / habits (per-habit stats) / proposals
+[/HABIT ANALYSIS]
+
+[CALENDAR CONTEXT]   ← only if calendar connected
+upcoming events
+[/CALENDAR CONTEXT]
+
+[PRIOR ADJUSTMENTS]  ← only if past accepted changes exist
+prior accepted changes
+[/PRIOR ADJUSTMENTS]
+```
+
+### COACH_PROPOSALS Marker
+
+Output by Claude only when the user explicitly agrees to changes. Parsed by `extractProposalsFromMessage()`.
+
+```
+COACH_PROPOSALS:[
+  {
+    "habitId": "uuid",
+    "habitName": "exact habit name",
+    "adjustmentType": "increase_difficulty|decrease_difficulty|shift_time|change_cue|no_change",
+    "currentValue": "what it is now",
+    "proposedValue": "exactly what it becomes — must be specific",
+    "rationale": "one-line reason"
+  }
+]
+```
+
+**Apply logic** (`POST /api/agents/coach/apply`):
+- `shift_time` → updates `habits.time_of_day`
+- `increase_difficulty` / `decrease_difficulty` → updates `habits.habit_name`
+- `change_cue` → updates `habits.cue`
+- All changes → inserts row in `habit_adjustments` (audit log)
+- Sets `users.last_coach_review_at = now()` (prevents review card reappearing for 7 days)
+
+### Conversation Rules
+- One observation or proposal per message — never a dump of all insights
+- Ask before changing: "Would you be open to...?" never "You should..."
+- If user pushes back, honor it without debate — note and move on
+- If user defends a flagged behavior, explore why — it may be genuinely serving them
+- Maximum 12 turns per session
+
+### Data Sources (extensible)
+Currently reads: `habit_logs`, `habit_survey_responses`, `habits`, Google Calendar events, `user_profile_context`, `habit_adjustments` (prior history)
+
+Future data sources to add to `loadWeeklyAnalysis()`:
+- Location data (which habits get skipped when away from home)
+- Wearable data (sleep scores correlated with morning habits)
+- Energy logs (which time-of-day has highest completion)
+
+### Eval Cases
+- No habits → returns `{ hasData: false, reason: 'no_habits' }`; agent asks what's been working
+- First week (no logs) → agent opens with encouragement, no proposals
+- All habits 100% → proposes `increase_difficulty` for each, discusses with user
+- User pushes back on proposal → agent notes preference, does not re-propose
+- User defends flagged behavior → agent explores why without judgment
+
+---
+
 ## Phase 2: Future Agents
 
-### Agent 4: Habit Breaker ("The Analyst")
+### Agent 5: Habit Breaker ("The Analyst")
 
 **Purpose:** Helps users understand and dismantle bad habits using the cue-craving-action-reward framework in reverse. Non-judgmental, curious.
 
@@ -396,7 +541,7 @@ Step 5 — REPLACEMENT (hand off to Architect for replacement habit)
 
 ---
 
-### Agent 5: Navigator ("The Daily Planner") — Phase 2
+### Agent 6: Navigator ("The Daily Planner") — Phase 2
 
 **Purpose:** Pulls tasks and habits, recommends a time-blocked daily schedule based on energy levels, urgency, and goal alignment.
 

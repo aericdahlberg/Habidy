@@ -12,6 +12,7 @@ export type HabitSuggestionResponse = {
   two_minute_version: string
   category: string
   proposedId: string | null
+  suggested_time?: string
 }
 
 type Props = {
@@ -22,6 +23,7 @@ type Props = {
   handoffLabel?: string
   onHabitReady?: (habitData: Record<string, string>) => void
   onHabitsReady?: (habits: HabitSuggestionResponse[]) => void
+  onProposalsReady?: (proposals: Record<string, unknown>[]) => void
   extraPayload?: Record<string, unknown>
   thinkingLabel?: string
   maxTurns?: number
@@ -36,6 +38,7 @@ export default function ChatInterface({
   handoffLabel = 'Build a habit →',
   onHabitReady,
   onHabitsReady,
+  onProposalsReady,
   extraPayload,
   thinkingLabel = 'Thinking...',
   maxTurns,
@@ -86,6 +89,7 @@ export default function ChatInterface({
         habitReady?: boolean
         habitData?: Record<string, string>
         habitsReady?: HabitSuggestionResponse[]
+        proposalsReady?: Record<string, unknown>[]
         error?: string
         limitReached?: boolean
         turnsUsed?: number
@@ -142,6 +146,10 @@ export default function ChatInterface({
       if (data.habitsReady && data.habitsReady.length > 0 && onHabitsReady) {
         setHabitReady(true)
         onHabitsReady(data.habitsReady)
+      }
+
+      if (data.proposalsReady && onProposalsReady) {
+        onProposalsReady(data.proposalsReady as Record<string, unknown>[])
       }
     } catch (err) {
       console.error('[ChatInterface] fetch error', err)

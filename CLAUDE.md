@@ -1,16 +1,24 @@
 # CLAUDE.md — Hab-Idy
 
+## Before ANY non-trivial task
+1. Enter plan mode (Shift+Tab) BEFORE writing a single line of code
+2. If you find yourself implementing without having planned first — STOP.
+   Run `/exit` on the current work, enter plan mode, plan it, get approval, then re-implement.
+   This is non-negotiable.
+
 ## MANDATORY WORKFLOW — follow every time
 1. Enter PLAN MODE (Opus) before any non-trivial task
 2. Think through the plan using ultrathink for tasks > 30 min
 3. Get explicit approval before executing
-4. After every file edit: run build → test → lint (hooks handle this)
-5. Never mark a task done until tests pass
+4. **Before exiting plan mode: write the approved plan to the path shown in the hook error** (`.claude/plans/plan-{session_id}.md`) — the PreToolUse hook blocks all file writes until this file exists. Each session gets its own plan file, so multiple agents never interfere and every new conversation automatically requires a fresh plan.
+5. After every file edit: run build → test → lint (hooks handle this)
+6. Never mark a task done until tests pass
 
 ## Code rules
 - Max 200 lines per file
-- Write tests alongside every new function
+- Write tests alongside every new function (`npm test` must stay green)
 - Update relevant .md docs after any API/interface change
+- Never use `new Date().toISOString().split('T')[0]` for habit log dates — use `localDateStr()` from `lib/utils.ts` (local timezone, not UTC)
 
 ## Token management
 - /clear between unrelated tasks
@@ -80,8 +88,9 @@ AGENTS
   /architect              → Habit builder — embla carousel, 5 habits, pick up to 2
 
 CORE APP (bottom nav)
-  /dashboard              → Morning greeting, motivational quote, progress bar,
+  /dashboard              → Morning greeting, motivational quote, WeeklyReviewCard (when due),
                             SwipeCheckIn on first visit, habit checklist + streak
+  /coach                  → Habit Coach chat — weekly review, COACH_PROPOSALS, apply changes
   /explore                → Floating bubble categories, Talk to agent CTA,
                             reflection textarea → POST /api/explore
   /social                 → Friends' habit completion, friend requests, add by email
@@ -101,6 +110,7 @@ UNLOCKED AT STREAK
 | `docs/SCREENS.md` | Exact spec for every screen |
 | `docs/DATA.md` | Database schema, API routes, file structure |
 | `docs/BUILD.md` | Build order, tech stack, prompting guide |
+| `docs/TESTING.md` | **How to run tests, manual test checklists, pre-deploy gate** |
 | `docs/ARCHITECTURE.md` | System architecture diagram and data flow |
 
 ---
@@ -134,6 +144,9 @@ UNLOCKED AT STREAK
 | `LANGCHAIN_TRACING_V2` | optional | Set to `true` to enable LangSmith tracing |
 | `LANGCHAIN_API_KEY` | optional | LangSmith API key |
 | `LANGCHAIN_PROJECT` | optional | LangSmith project name (e.g. `Habidy-Prompt-Eval`) |
+| `GOOGLE_CLIENT_ID` | optional | Google OAuth client ID (required for Calendar integration) |
+| `GOOGLE_CLIENT_SECRET` | optional | Google OAuth client secret |
+| `NEXT_PUBLIC_APP_URL` | optional | App base URL for OAuth redirect (e.g. `http://localhost:3000`) |
 
 ---
 
@@ -213,14 +226,14 @@ hooks/
 
 ## What Is Explicitly Out of Scope (for now)
 
-- ❌ Google Calendar / Notion integration
+- ✅ Google Calendar integration (read 2-week window + recurring habit events with reminders)
 - ❌ RAG / vector database
 - ❌ Analytics / Insights page
 - ❌ Push notifications / widgets
 - ❌ App blocking
 - ❌ OKR tracking
 - ❌ Morning ritual screen
-- ❌ Google OAuth (email/password only for now)
+- ❌ Google Sign-In (email/password only — Google OAuth is for Calendar only, not login)
 - ❌ Communities / group challenges (social screen shows it as "coming soon")
 
 ---
@@ -244,3 +257,35 @@ Before you start, tell me your plan."
 - If it touches an agent, reference `docs/AGENTS.md`.
 - Ask Claude to state its plan before writing any code.
 - Review diffs before approving — Claude moves fast.
+
+---
+
+## Testing Quick Reference
+
+```bash
+# Unit tests (must be green before every commit)
+npm test                       # 73 tests — sanitize, notification-prefs, calendar-helpers, calendar-dismiss
+npm test -- --watch            # watch mode
+npm test -- --reporter=verbose # show test names
+
+# Type check (faster than full build)
+npx tsc --noEmit
+
+# Full build (run before deploy)
+npm run build
+
+# Agent evals (requires LANGCHAIN_API_KEY)
+npm run eval:agents            # conversation quality
+npm run eval:prompts           # prompt A/B
+npm run eval:models            # model comparison
+
+# After any lib change
+npm test && npm run build
+```
+
+**Full manual test playbook → `docs/TESTING.md`**
+
+Sections:
+- A. Auth · B. Onboarding · C. Constellation · D. Architect
+- E. Dashboard & Logging · F. Google Calendar (GC1–GC20) · G. Profile & Notifications · H. Social
+- Pre-deploy checklist · Debugging tips · Known coverage gaps

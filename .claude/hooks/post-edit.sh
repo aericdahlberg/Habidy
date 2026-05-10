@@ -69,9 +69,21 @@ if [ $? -ne 0 ]; then
   exit 1
 fi
 
-# 3. Remind to update docs if agent/API files changed
-if echo "$CHANGED_FILE" | grep -qE "lib/agents|lib/claude|src/api|app/api"; then
-  echo "⚠️  Agent/API file changed — remember to update docs/AGENTS.md or docs/DATA.md"
+# 3. Remind to update specific docs based on what changed
+if echo "$CHANGED_FILE" | grep -qE "lib/agents/architect|lib/agents/constellation"; then
+  echo "⚠️  Agent file changed — update docs/AGENTS.md (persona, context fields, HABITS_READY shape, eval cases)"
+fi
+if echo "$CHANGED_FILE" | grep -qE "app/api/agents|app/api/calendar|app/api/auth/google|app/api/habits|app/api/explore|app/api/social|app/api/memory|app/api/onboarding|app/api/mode"; then
+  echo "⚠️  API route changed — update docs/DATA.md (route list, request/response shape, auth notes)"
+fi
+if echo "$CHANGED_FILE" | grep -qE "lib/google-auth|lib/google-calendar"; then
+  echo "⚠️  Google Calendar lib changed — update docs/DATA.md (schema / routes) and docs/AGENTS.md if context injection changed"
+fi
+if echo "$CHANGED_FILE" | grep -qE "app/(onboarding|profile|architect|dashboard|constellation|welcome|mode-select|quick-habit|add-habit|explore|social|login)"; then
+  echo "⚠️  Screen file changed — update docs/SCREENS.md (layout, navigation, state, new UI elements)"
+fi
+if echo "$CHANGED_FILE" | grep -qE "supabase/migrations|supabase/.+\.sql"; then
+  echo "⚠️  Migration changed — update docs/DATA.md schema section with new tables or columns"
 fi
 
 echo "✅ Checks passed"

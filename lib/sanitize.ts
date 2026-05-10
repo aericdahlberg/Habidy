@@ -55,6 +55,8 @@ export function escapeFenceMarkers(s: string): string {
     .replace(/\[\/USER CONTEXT\]/gi,            `[/USER${ZWS}CONTEXT]`)
     .replace(/\[CONVERSATION TRANSCRIPT\]/gi,   `[CONVERSATION${ZWS}TRANSCRIPT]`)
     .replace(/\[\/CONVERSATION TRANSCRIPT\]/gi,  `[/CONVERSATION${ZWS}TRANSCRIPT]`)
+    .replace(/\[CALENDAR CONTEXT\]/gi,          `[CALENDAR${ZWS}CONTEXT]`)
+    .replace(/\[\/CALENDAR CONTEXT\]/gi,         `[/CALENDAR${ZWS}CONTEXT]`)
 }
 
 export function sanitizeUserInput(

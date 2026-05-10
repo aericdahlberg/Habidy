@@ -212,6 +212,7 @@ async function _runArchitect(
     timeAvailable: '15 minutes',
     crystalBallSummary: summary,
     profileContext: null,
+      calendarContext: null,
   }
   const systemPrompt = buildArchitectSystemPrompt({ hasCrystalBallNotes: !!summary })
   const contextBlock = buildArchitectUserContext(ctx, null)

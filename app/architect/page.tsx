@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
-import { RefreshCw, Heart } from 'lucide-react'
+import { RefreshCw, Heart, Calendar } from 'lucide-react'
 import { Toaster, toast } from 'sonner'
 import { supabase } from '@/lib/supabase'
 import type { HabitSuggestionResponse } from '@/components/ChatInterface'
@@ -33,6 +33,8 @@ export default function ArchitectPage() {
   const [state, setState] = useState<GenerateState>('loading')
   const [introText, setIntroText] = useState('')
   const [saveError, setSaveError] = useState('')
+  const [calendarConnected, setCalendarConnected] = useState(false)
+  const [addToCalendar, setAddToCalendar] = useState(false)
 
   const generate = useCallback(async (uid: string) => {
     setState('loading')
@@ -67,9 +69,20 @@ export default function ArchitectPage() {
   }, [])
 
   useEffect(() => {
-    supabase.auth.getUser().then(({ data: { user } }) => {
+    supabase.auth.getUser().then(async ({ data: { user } }) => {
       if (!user) { setState('error'); return }
       setUserId(user.id)
+
+      // Check calendar connection status
+      const { data: userRow } = await supabase
+        .from('users')
+        .select('google_calendar_connected')
+        .eq('id', user.id)
+        .maybeSingle()
+      if (userRow?.google_calendar_connected) {
+        setCalendarConnected(true)
+        setAddToCalendar(true)
+      }
 
       // Check for pre-generated habits from quick-habit flow
       const pregenRaw = sessionStorage.getItem('habidy_pregenerated_habits')
@@ -125,8 +138,39 @@ export default function ArchitectPage() {
         body: JSON.stringify({ user_id: userId, habits: selectedHabits, selectedProposedIds }),
       })
 
-      const data = await res.json().catch(() => ({})) as { error?: string }
+      const data = await res.json().catch(() => ({})) as { error?: string; habits?: Array<{ id: string; habit_name: string }> }
       if (!res.ok) throw new Error(data.error ?? 'Could not save habits')
+
+      // Add selected habits to Google Calendar if opted in
+      if (addToCalendar && calendarConnected) {
+        const tz = Intl.DateTimeFormat().resolvedOptions().timeZone
+        // Build a name→id map from the inserted rows so we match by content, not position
+        const savedById = new Map(
+          (data.habits ?? []).map((h: { id: string; habit_name: string }) => [h.habit_name, h.id])
+        )
+        const results = await Promise.allSettled(
+          selectedHabits.map((h) =>
+            fetch('/api/calendar/habits', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                habitName: h.habit_name,
+                cue: h.cue,
+                twoMinuteVersion: h.two_minute_version,
+                suggestedTime: h.suggested_time ?? 'morning',
+                userTimezone: tz,
+                identityLabel: h.identity_label,
+                category: h.category,
+                habitId: savedById.get(h.habit_name),
+              }),
+            }).then((r) => { if (!r.ok) throw new Error(`${r.status}`) }),
+          ),
+        )
+        const failed = results.filter((r) => r.status === 'rejected').length
+        if (failed > 0) {
+          toast(`${failed === selectedHabits.length ? 'Could not add' : 'Some habits could not be added'} to Google Calendar. You can reconnect in Profile.`)
+        }
+      }
 
       localStorage.removeItem('habidy_active_habit')
       setState('saved')
@@ -340,6 +384,19 @@ export default function ArchitectPage() {
                 ? 'Start this habit →'
                 : `Start these ${selected.size} habits →`}
             </button>
+            {calendarConnected && (
+              <button
+                onClick={() => setAddToCalendar((v) => !v)}
+                className={`mt-2 flex w-full items-center justify-center gap-2 rounded-full border py-2.5 font-body text-sm transition-colors ${
+                  addToCalendar
+                    ? 'border-primary bg-primary/10 text-primary'
+                    : 'border-border bg-card text-muted-foreground'
+                }`}
+              >
+                <Calendar size={15} />
+                {addToCalendar ? 'Adding to Google Calendar' : 'Add to Google Calendar'}
+              </button>
+            )}
             <p className="mt-1 text-center font-body text-[10px] text-muted-foreground">
               {MAX_SELECTION - selected.size === 0
                 ? 'Maximum selected'

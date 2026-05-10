@@ -98,6 +98,32 @@ Sticky footer: [Back] + [Continue / Done]
 
 Saves to `sessionStorage` on Done.
 
+### Screen 6b: Google Calendar (`/onboarding/calendar`)
+
+Optional screen inserted between Questionnaire and Loading. Shown to all new users.
+
+```
+Mascot image (40×40)
+"Connect Google Calendar"
+"See your habits alongside your schedule and get reminders."
+
+Benefits list (3 rows with icons):
+  📅  "See habits on your calendar"
+  ⏰  "Daily reminders at the right time"
+  🧠  "Architect learns your free time"
+
+[Connect Google Calendar →]  → GET /api/auth/google?from=onboarding
+                                → Google consent → callback → /onboarding/loading
+
+[Skip for now]  → /onboarding/loading (text-muted-foreground underline)
+
+(Note: skipping is always fine — can connect later from Profile → Integrations)
+```
+
+Navigation:
+- "Connect" starts the OAuth flow; after Google consent, callback redirects to `/onboarding/loading`
+- "Skip" navigates directly to `/onboarding/loading`
+
 ### Screen 6: Loading (`/onboarding/loading`)
 
 ```
@@ -274,7 +300,9 @@ Selection rules:
 
 Floating bottom bar (AnimatePresence, springs up when ≥1 selected):
   [Start this habit →] / [Start these 2 habits →]
-  "You can pick N more" hint below button
+  [Add to Google Calendar] toggle — only shown if user has calendar connected
+    (teal border + bg when on; muted border when off; pre-checked if connected)
+  "You can pick N more" / "Maximum selected" hint below button
 ```
 
 ---
@@ -338,6 +366,25 @@ After 7-day streak on any habit:
 FAB (+ button, bottom right above nav):
   Fixed, teal, spring in → /architect
 ```
+
+### Per-habit Reminder Sheet
+
+Bell icon appears in the identity banner (top-right of HabitCard) when:
+- `calendarConnected === true` AND `habit.google_calendar_event_id` is set
+
+Tapping the bell opens `<ReminderSheet>`:
+```
+Reminders for "{habitName}"
+
+Reminders enabled     [toggle]
+Time of day           [Morning] [Midday] [Afternoon] [Evening] [Late night]
+Remind me             [30 min] [15 min] [5 min] [At start]  ← multi-pick
+                      "Using global defaults from Profile" (when none picked)
+
+[Save]    [Use defaults]   ← "Use defaults" resets per-habit overrides to null
+```
+
+`PATCH /api/calendar/habits/[habitId]` — propagates to Google Calendar event.
 
 ### Swipe Mechanic (HabitCard)
 
@@ -468,9 +515,79 @@ Email
   Active habits count (from habits table)
   Current focus (from users.goal_category)
 
+"Integrations" card:
+  Calendar icon + "Google Calendar"
+  If connected:   green dot + "Connected" · [Disconnect] button → DELETE /api/calendar/disconnect
+  If not:         gray dot + "Not connected" · [Connect] button → GET /api/auth/google?from=profile
+  Success banner (from ?calendar=connected query param): green "Google Calendar connected!"
+  Error banner   (from ?calendar=error query param):    red   "Could not connect. Try again."
+  Banners auto-dismiss on next page load (query param not persisted)
+
 [Reset and start over] → clears localStorage, routes to /welcome
 [Sign out] → Supabase signOut(), routes to /login
 ```
+
+"Notifications" card (shown only when `calendarConnected === true`):
+
+```
+🔔 NOTIFICATIONS
+
+Auto-dismiss when logged      [toggle, default ON]
+  "Clears today's reminder after you log the habit"
+
+Email reminder (1 hr before)  [toggle, default OFF]
+  "Google Calendar sends an email 1 hr before each habit"
+
+Default remind me:
+  [ 30 min ] [ 15 min ] [ 5 min ] [ At start ]   ← multi-pick chips
+"Reminders include your habit name and identity statement."
+```
+
+State: debounced `PATCH /api/profile/notification-prefs` on every toggle/chip click.
+Optimistic update — UI reflects change immediately, reverts on server error.
+
+OAuth redirect params:
+- `?from=profile` → callback redirects back to `/profile?calendar=connected`
+- `?from=onboarding` → callback redirects to `/onboarding/loading`
+
+---
+
+## Screen: Habit Coach (`/coach`)
+
+**Background:** `bg-gradient-to-b from-secondary/5 to-background`
+**Entry:** `WeeklyReviewCard` on `/dashboard` → "Let's talk →" button
+**Also reachable:** Coach tab in BottomNav (when review is due; otherwise goes to `/constellation`)
+
+```
+Header:
+  ← back button (router.back())
+  "Habit Coach"  (font-heading, xl)
+  "Weekly review"  (muted subtitle)
+
+Chat area:
+  ChatInterface component with agentEndpoint="/api/agents/coach"
+  thinkingLabel="Reviewing your week…"
+  maxTurns=12
+
+Apply bar (AnimatePresence — appears when COACH_PROPOSALS detected):
+  Purple button: "Apply N change(s) →"
+  → POST /api/agents/coach/apply
+  → success state: teal confirmation + redirect to /dashboard after 1.5s
+
+BottomNav visible.
+```
+
+**Data flow:**
+1. On mount: auth check → setUserId
+2. ChatInterface auto-calls `/api/agents/coach` with `messages: []` on first render
+3. Agent reads `[HABIT ANALYSIS]` + `[CALENDAR CONTEXT]` from server-loaded context
+4. When Claude outputs `COACH_PROPOSALS:`, `onProposalsReady` fires → Apply bar appears
+5. Apply bar: POST to `/api/agents/coach/apply` → updates habits + `last_coach_review_at`
+
+**State:**
+- `proposals: CoachProposal[] | null` — set when agent outputs COACH_PROPOSALS marker
+- `applying: boolean` — disabled state for Apply button
+- `applied: boolean` — success state, triggers redirect
 
 ---
 
@@ -481,7 +598,7 @@ Fixed at bottom. White `bg-white/95`, `backdrop-blur-md`, subtle `border-t borde
 ```
 🏠 Home      → /dashboard
 🧭 Explore   → /explore
-[mascot] Coach → /constellation
+[mascot] Coach → /coach (when weekly review due) | /constellation (otherwise)
 👥 Social    → /social
 👤 Profile   → /profile
 ```

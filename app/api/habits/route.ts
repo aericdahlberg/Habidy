@@ -52,6 +52,7 @@ export async function POST(req: NextRequest) {
           craving?: string
           reward?: string
           time_of_day?: string
+          suggested_time?: string
         }>
         selectedProposedIds?: string[]
       }
@@ -71,6 +72,7 @@ export async function POST(req: NextRequest) {
         craving: h.craving ?? null,
         reward: h.reward ?? null,
         time_of_day: h.time_of_day ?? 'anytime',
+        reminder_time: h.suggested_time ?? null,
         is_active: true,
       }))
 

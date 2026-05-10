@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { adminClient } from '@/lib/supabase'
 import { getRouteUser } from '@/lib/supabaseServer'
+import { dismissTodayReminder } from '@/lib/calendar-dismiss'
+
+function localDateInTz(tz: string): string {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: tz }).format(new Date())
+}
 
 export async function POST(
   req: NextRequest,
@@ -22,8 +27,20 @@ export async function POST(
       return NextResponse.json({ error: 'completed required' }, { status: 400 })
     }
 
-    const logDate = date ?? new Date().toISOString().split('T')[0]
     const db = adminClient()
+
+    // Prefer client-supplied date (local timezone). If missing, fall back to
+    // user's stored timezone, then UTC. Clients should always send date via localDateStr().
+    let logDate: string = date
+    if (!logDate) {
+      const { data: userRow } = await db
+        .from('users')
+        .select('timezone')
+        .eq('id', user.id)
+        .maybeSingle()
+      const tz = (userRow?.timezone as string | null) ?? 'UTC'
+      logDate = localDateInTz(tz)
+    }
 
     const { data: habit, error: habitError } = await db
       .from('habits')
@@ -54,6 +71,7 @@ export async function POST(
         .single()
 
       if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+      if (completed) void dismissTodayReminder({ userId: user.id, habitId, logDate })
       return NextResponse.json({ log: data, updated: true })
     }
 
@@ -64,6 +82,7 @@ export async function POST(
       .single()
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    if (completed) void dismissTodayReminder({ userId: user.id, habitId, logDate })
     return NextResponse.json({ log: data, updated: false })
   } catch (err) {
     console.error('[POST /api/habits/[id]/log]', err)

@@ -83,6 +83,10 @@ PHASE 7 — Observability
 PHASE 7b — Testing Infrastructure
   [x] 38. Vitest configured (vitest.config.ts, npm test script)
   [x] 39. sanitize.ts unit tests — 47 tests: injection patterns, false positives, fence escape
+  [x] 40. notification-prefs.ts unit tests — 9 tests: parseNotificationPrefs valid/invalid/defaults
+  [x] 41. google-calendar-helpers.ts unit tests — 12 tests: buildReminders (cap, email, empty),
+           buildDescription (identity, sanitization), tomorrowDateStr (format, day math)
+  [x] 42. calendar-dismiss.ts unit tests — 6 tests: all bail conditions + happy path (mocked)
 
 PHASE 8 — Polish & Ship
   [ ] 33. End-to-end test: signup → onboarding (6 screens) → constellation
@@ -129,11 +133,12 @@ PHASE 13 — Insights Screen
   [ ] 62. Identity alignment score over time
 
 PHASE 14 — Calendar & Notifications
-  [ ] 63. Google Calendar integration — write habit time blocks to calendar
-  [ ] 64. "Don't break your streak" email reminder — daily check, trigger if no log by evening
-           (Recommended: Resend API — generous free tier, simple setup)
+  [x] 63. Google Calendar integration — custom OAuth, token storage, Architect context injection,
+           recurring habit events with reminders, onboarding screen, profile connect/disconnect
+  [x] 64. Smart reminder system — identity-aware event descriptions, multi-tier popups,
+           auto-dismiss when habit logged (instance PATCH), global + per-habit prefs UI
   [ ] 65. Proactive Habit Breaker entry — notify user after 3+ days habit neglect
-  [ ] 66. Push notifications (PWA service worker)
+  [ ] 66. Push notifications (PWA service worker) — deferred; calendar reminders cover core case
   [ ] 67. Navigator agent — energy-aware daily planner (depends on Calendar + energy_logs)
 
 PHASE 15 — Scale (later)
@@ -142,6 +147,42 @@ PHASE 15 — Scale (later)
   [ ] 70. Communities on /social — group habit challenges
   [ ] 71. Notion integration — task sync for Navigator
   [ ] 72. Safari browsable content feed — popularity-ranked habit discovery
+```
+
+---
+
+## Running Tests & Evals
+
+### Unit tests (Vitest)
+```bash
+npm test                    # run all unit tests once (73 tests across 4 files)
+npm test -- --watch         # watch mode — reruns on file change
+npm test -- lib/notification-prefs.test.ts   # run a single test file
+npm test -- --reporter=verbose               # show each test name
+```
+
+Tests live alongside the code they test (`lib/*.test.ts`). They run in Node, no browser or
+Supabase connection needed. Mocks for Supabase / Google APIs live inside each test file.
+
+### AI agent evals (LangSmith)
+```bash
+npm run eval:agents   # conversation quality — saves to evals/results/agents-YYYYMMDD-HHMMSS.txt
+npm run eval:prompts  # prompt comparison   — saves to evals/results/prompts-...
+npm run eval:models   # model comparison    — saves to evals/results/models-...
+```
+
+Requires `LANGCHAIN_TRACING_V2=true` and `LANGCHAIN_API_KEY` in `.env`.
+Results are also visible in the LangSmith dashboard under project `LANGCHAIN_PROJECT`.
+
+### Type check (no build)
+```bash
+npx tsc --noEmit        # TypeScript check only — faster than full build
+npm run build           # full Next.js build + TS check (run before every commit)
+```
+
+### After editing a lib file
+```bash
+npm test && npm run build   # tests first, then build — catches both logic bugs and type errors
 ```
 
 ---
@@ -159,6 +200,28 @@ Tell me your plan before writing any code."
 ```
 
 Always ask for a plan first. Catch misunderstandings before code is written.
+
+### Claude Code hooks (`.claude/`)
+
+Two hooks run automatically — do not remove them.
+
+**`PreToolUse` → `require-plan.sh`** (runs before every Write/Edit/MultiEdit)
+Blocks all file writes until an approved plan exists for the current session. Plan files live at `.claude/plans/plan-{session_id}.md`. Each Claude Code session gets its own file, so:
+- Multiple simultaneous agents never conflict
+- Every new conversation automatically requires a fresh plan (no manual deletion)
+- Files older than 48 hours are auto-deleted
+
+When blocked, the error message prints the exact path to write the plan to. The workflow:
+1. Enter plan mode (`Shift+Tab`)
+2. Plan the task, get approval
+3. Write the plan to the path shown in the error
+4. Exit plan mode — writes are now unblocked
+
+**`PostToolUse` → `post-edit.sh`** (runs after every Write/Edit/MultiEdit)
+- TypeScript type check (`tsc --noEmit`)
+- ESLint on the changed file
+- Doc-update reminders based on which file changed (agents, API routes, screens, migrations)
+- Task status reminders when TASKS.md items are marked `[x]`, `[~]`, or `[!]`
 
 ---
 
@@ -225,6 +288,21 @@ sessionStorage.setItem('habidy_onboarding_questionnaire', JSON.stringify(answers
 import { cn } from '@/lib/utils'
 className={cn('base-classes', condition && 'conditional-class')}
 ```
+
+### localDateStr() — always use for log dates
+```typescript
+// lib/utils.ts — returns YYYY-MM-DD in the device's LOCAL timezone
+import { localDateStr } from '@/lib/utils'
+const today = localDateStr()   // ✅ correct for habit logs, streaks, calendar lookups
+
+// ❌ Never use this for log dates — returns UTC date, breaks for US users after midnight UTC
+const today = new Date().toISOString().split('T')[0]
+```
+
+Habit log dates, streak comparisons, and calendar instance lookups must all use the same
+timezone-aware date. `localDateStr` uses `Intl.DateTimeFormat('en-CA')` which always
+returns `YYYY-MM-DD` in the browser's local timezone. On the server, use
+`Intl.DateTimeFormat('en-CA', { timeZone: users.timezone }).format(new Date())`.
 
 ### Never do this
 ```typescript

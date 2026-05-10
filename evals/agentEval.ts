@@ -393,6 +393,7 @@ function makeArchitectTrace(agentModel: string, mode: EvalMode, persona: EvalPer
         timeAvailable: user.peakEnergy,
         crystalBallSummary,
         profileContext: null,
+      calendarContext: null,
       }
       const systemPrompt = buildAutoGenerateSystemPrompt({
         hasQuickHabit: false,

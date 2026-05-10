@@ -3,17 +3,17 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { motion } from 'framer-motion'
-import { LogOut, User, Mail, Target, Sparkles } from 'lucide-react'
+import { LogOut, User, Mail, Target, Sparkles, Calendar, Check, X, Bell } from 'lucide-react'
 import BottomNav from '@/components/BottomNav'
 import { supabase } from '@/lib/supabase'
+import { parseNotificationPrefs, DEFAULT_NOTIFICATION_PREFS } from '@/lib/notification-prefs'
+import type { NotificationPrefs } from '@/lib/notification-prefs'
 
 type ProfileData = {
   identity_statement?: string | null
   goal_category?: string | null
   display_name?: string | null
 }
-
-type HabitCount = { count: number }
 
 const InfoRow = ({ icon: Icon, label, value }: { icon: React.ElementType; label: string; value: string }) => (
   <div className="flex items-start gap-3 py-3">
@@ -32,6 +32,17 @@ export default function ProfilePage() {
   const [email, setEmail] = useState<string | null>(null)
   const [data, setData] = useState<ProfileData>({})
   const [habitCount, setHabitCount] = useState(0)
+  const [calendarConnected, setCalendarConnected] = useState(false)
+  const [calendarLoading, setCalendarLoading] = useState(false)
+  const [calendarMsg, setCalendarMsg] = useState<string | null>(null)
+  const [notifPrefs, setNotifPrefs] = useState<NotificationPrefs>(DEFAULT_NOTIFICATION_PREFS)
+  const [notifSaving, setNotifSaving] = useState(false)
+
+  useEffect(() => {
+    const status = new URLSearchParams(window.location.search).get('calendar')
+    if (status === 'connected') setCalendarMsg('Google Calendar connected!')
+    if (status === 'error') setCalendarMsg('Could not connect Google Calendar. Try again.')
+  }, [])
 
   useEffect(() => {
     async function load() {
@@ -41,11 +52,22 @@ export default function ProfilePage() {
 
       const { data: row } = await supabase
         .from('users')
-        .select('identity_statement, goal_category, display_name')
+        .select('identity_statement, goal_category, display_name, google_calendar_connected')
         .eq('id', user.id)
         .maybeSingle()
 
-      if (row) setData(row)
+      if (row) {
+        setData(row)
+        setCalendarConnected(row.google_calendar_connected ?? false)
+      }
+
+      if (row?.google_calendar_connected) {
+        const prefsRes = await fetch('/api/profile/notification-prefs')
+        if (prefsRes.ok) {
+          const prefsData = await prefsRes.json() as { prefs: NotificationPrefs }
+          setNotifPrefs(parseNotificationPrefs(prefsData.prefs))
+        }
+      }
 
       const { count } = await supabase
         .from('habits')
@@ -56,6 +78,50 @@ export default function ProfilePage() {
     }
     load()
   }, [])
+
+  async function handleDisconnectCalendar() {
+    setCalendarLoading(true)
+    try {
+      const res = await fetch('/api/calendar/disconnect', { method: 'DELETE' })
+      if (res.ok) {
+        setCalendarConnected(false)
+        setCalendarMsg('Google Calendar disconnected.')
+      }
+    } finally {
+      setCalendarLoading(false)
+    }
+  }
+
+  function handleConnectCalendar() {
+    window.location.href = '/api/auth/google?from=profile'
+  }
+
+  async function handleNotifPrefChange(patch: Partial<NotificationPrefs>) {
+    const optimistic = { ...notifPrefs, ...patch }
+    setNotifPrefs(optimistic)
+    setNotifSaving(true)
+    try {
+      const res = await fetch('/api/profile/notification-prefs', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(patch),
+      })
+      if (res.ok) {
+        const d = await res.json() as { prefs: NotificationPrefs }
+        setNotifPrefs(parseNotificationPrefs(d.prefs))
+      }
+    } finally {
+      setNotifSaving(false)
+    }
+  }
+
+  function toggleMinuteBefore(min: number) {
+    const current = notifPrefs.default_minutes_before
+    const next = current.includes(min)
+      ? current.filter((m) => m !== min)
+      : [...current, min].sort((a, b) => b - a)
+    void handleNotifPrefChange({ default_minutes_before: next })
+  }
 
   async function handleSignOut() {
     await supabase.auth.signOut()
@@ -145,6 +211,115 @@ export default function ProfilePage() {
           )}
         </div>
       </section>
+
+      <section className="mt-4 px-4">
+        <div className="rounded-2xl border border-border bg-card p-4 shadow-sm">
+          <h3 className="mb-3 font-heading text-sm font-bold uppercase tracking-wide text-muted-foreground">
+            Integrations
+          </h3>
+          {calendarMsg && (
+            <p className={`mb-3 rounded-xl px-3 py-2 font-body text-sm ${calendarMsg.includes('connected!') ? 'bg-primary/10 text-primary' : 'bg-destructive/10 text-destructive'}`}>
+              {calendarMsg}
+            </p>
+          )}
+          <div className="flex items-center gap-3">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+              <Calendar size={18} />
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="font-body text-sm font-semibold text-foreground">Google Calendar</div>
+              <div className="font-body text-xs text-muted-foreground">
+                {calendarConnected ? 'Connected — habit reminders active' : 'Not connected'}
+              </div>
+            </div>
+            {calendarConnected ? (
+              <button
+                onClick={handleDisconnectCalendar}
+                disabled={calendarLoading}
+                className="flex shrink-0 items-center gap-1 rounded-full border border-border bg-muted px-3 py-1.5 font-body text-xs font-semibold text-muted-foreground disabled:opacity-50"
+              >
+                <X size={11} /> Disconnect
+              </button>
+            ) : (
+              <button
+                onClick={handleConnectCalendar}
+                className="flex shrink-0 items-center gap-1 rounded-full bg-primary px-3 py-1.5 font-body text-xs font-bold text-primary-foreground"
+              >
+                <Check size={11} /> Connect
+              </button>
+            )}
+          </div>
+        </div>
+      </section>
+
+      {calendarConnected && (
+        <section className="mt-4 px-4">
+          <div className="rounded-2xl border border-border bg-card p-4 shadow-sm">
+            <div className="mb-3 flex items-center gap-2">
+              <Bell size={14} className="text-muted-foreground" />
+              <h3 className="font-heading text-sm font-bold uppercase tracking-wide text-muted-foreground">
+                Notifications
+              </h3>
+            </div>
+
+            {/* Auto-dismiss toggle */}
+            <div className="flex items-center justify-between gap-3 py-2">
+              <div className="flex-1 min-w-0">
+                <div className="font-body text-sm font-semibold text-foreground">Auto-dismiss when logged</div>
+                <div className="font-body text-xs text-muted-foreground">Clears today&apos;s reminder after you log the habit</div>
+              </div>
+              <button
+                onClick={() => void handleNotifPrefChange({ auto_dismiss_when_logged: !notifPrefs.auto_dismiss_when_logged })}
+                disabled={notifSaving}
+                className={`relative h-6 w-11 shrink-0 rounded-full transition-colors disabled:opacity-50 ${notifPrefs.auto_dismiss_when_logged ? 'bg-primary' : 'bg-muted-foreground/30'}`}
+              >
+                <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform ${notifPrefs.auto_dismiss_when_logged ? 'translate-x-5' : 'translate-x-0.5'}`} />
+              </button>
+            </div>
+
+            {/* Email reminder toggle */}
+            <div className="flex items-center justify-between gap-3 py-2">
+              <div className="flex-1 min-w-0">
+                <div className="font-body text-sm font-semibold text-foreground">Email reminder</div>
+                <div className="font-body text-xs text-muted-foreground">Google Calendar sends an email 1 hr before each habit</div>
+              </div>
+              <button
+                onClick={() => void handleNotifPrefChange({ email_reminder_enabled: !notifPrefs.email_reminder_enabled })}
+                disabled={notifSaving}
+                className={`relative h-6 w-11 shrink-0 rounded-full transition-colors disabled:opacity-50 ${notifPrefs.email_reminder_enabled ? 'bg-primary' : 'bg-muted-foreground/30'}`}
+              >
+                <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform ${notifPrefs.email_reminder_enabled ? 'translate-x-5' : 'translate-x-0.5'}`} />
+              </button>
+            </div>
+
+            {/* Reminder time chips */}
+            <div className="mt-3">
+              <div className="mb-2 font-body text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                Default remind me
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {[{ label: '30 min', value: 30 }, { label: '15 min', value: 15 }, { label: '5 min', value: 5 }, { label: 'At start', value: 0 }].map(({ label, value }) => {
+                  const active = notifPrefs.default_minutes_before.includes(value)
+                  return (
+                    <button
+                      key={value}
+                      onClick={() => toggleMinuteBefore(value)}
+                      disabled={notifSaving}
+                      className={`rounded-full border px-3 py-1 font-body text-xs font-semibold transition-colors disabled:opacity-50 ${active ? 'border-primary bg-primary/10 text-primary' : 'border-border bg-muted/50 text-muted-foreground'}`}
+                    >
+                      {label}
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+
+            <p className="mt-3 font-body text-[10px] text-muted-foreground">
+              Reminders include your habit name and identity statement.
+            </p>
+          </div>
+        </section>
+      )}
 
       <section className="mt-6 px-4 space-y-3">
         <button

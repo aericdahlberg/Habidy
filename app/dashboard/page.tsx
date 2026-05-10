@@ -6,10 +6,12 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { CheckCircle2, Circle, Plus, Sparkles } from 'lucide-react'
 import BottomNav from '@/components/BottomNav'
 import SwipeCheckIn from '@/components/SwipeCheckIn'
-import { cn } from '@/lib/utils'
+import WeeklyReviewCard from '@/components/WeeklyReviewCard'
+import { cn, localDateStr } from '@/lib/utils'
 import { supabase } from '@/lib/supabase'
 import { calculateStreak, getLast7Days } from '@/lib/streak'
 import type { DayStatus } from '@/lib/streak'
+import { useTimezoneSync } from '@/hooks/use-timezone-sync'
 
 type Habit = {
   id: string
@@ -47,7 +49,7 @@ function needsCheckIn(userId: string): boolean {
 }
 
 function buildHabitState(logs: Log[]): HabitState {
-  const today = new Date().toISOString().split('T')[0]
+  const today = localDateStr()
   const todayLog = logs.find((l) => l.date === today)
   return {
     logs,
@@ -72,6 +74,7 @@ const QUOTES = [
 ]
 
 export default function DashboardPage() {
+  useTimezoneSync()
   const router = useRouter()
   const [userId, setUserId] = useState<string | null>(null)
   const [userName, setUserName] = useState('')
@@ -82,6 +85,7 @@ export default function DashboardPage() {
   const [loadError, setLoadError] = useState('')
   const [showSwipe, setShowSwipe] = useState(false)
   const [checked, setChecked] = useState<Set<string>>(new Set())
+  const [lastCoachReviewAt, setLastCoachReviewAt] = useState<string | null>(null)
 
   const quote = useMemo(() => QUOTES[Math.floor(Math.random() * QUOTES.length)], [])
   const firstName = userName.split(' ')[0] || ''
@@ -105,13 +109,14 @@ export default function DashboardPage() {
 
         const { data: userRow } = await supabase
           .from('users')
-          .select('identity_statement, display_name')
+          .select('identity_statement, display_name, last_coach_review_at')
           .eq('id', user.id)
           .maybeSingle()
 
         if (userRow?.identity_statement) setIdentityStatement(userRow.identity_statement)
         if (userRow?.display_name) setUserName(userRow.display_name)
         else if (user.email) setUserName(user.email.split('@')[0])
+        setLastCoachReviewAt((userRow?.last_coach_review_at as string | null) ?? null)
 
         const habitsRes = await fetch(`/api/habits?user_id=${user.id}`, { cache: 'no-store' })
         const habitsJson = await habitsRes.json().catch(() => ({})) as { habits?: Habit[]; error?: string }
@@ -169,7 +174,7 @@ export default function DashboardPage() {
 
   async function handleLog(habitId: string, completed: boolean) {
     if (!userId) return
-    const today = new Date().toISOString().split('T')[0]
+    const today = localDateStr()
 
     setHabitStates((prev) => {
       const current = prev[habitId] ?? { logs: [], streak: 0, last7: [], todayLogged: false, todayCompleted: null }
@@ -195,7 +200,7 @@ export default function DashboardPage() {
       setShowSwipe(false)
       setChecked(completedSet)
 
-      const today = new Date().toISOString().split('T')[0]
+      const today = localDateStr()
       for (const habit of habits) {
         const completed = completedSet.has(habit.id)
         await handleLog(habit.id, completed)
@@ -308,6 +313,14 @@ export default function DashboardPage() {
             )}
           </motion.div>
         </section>
+      )}
+
+      {/* Weekly coach review card — shown when 7+ days since last review and habits exist */}
+      {!loading && (
+        <WeeklyReviewCard
+          lastReviewAt={lastCoachReviewAt}
+          habitsCount={habits.length}
+        />
       )}
 
       {/* Content */}

@@ -1,7 +1,10 @@
 "use client"
 
 import { useState, useRef } from 'react'
+import { Bell } from 'lucide-react'
 import StreakDots from './StreakDots'
+import ReminderSheet from './ReminderSheet'
+import { localDateStr } from '@/lib/utils'
 import type { DayStatus } from '@/lib/streak'
 
 type Habit = {
@@ -11,6 +14,10 @@ type Habit = {
   cue: string | null
   time_of_day: string | null
   category: string | null
+  google_calendar_event_id?: string | null
+  reminder_enabled?: boolean | null
+  reminder_minutes_before?: number[] | null
+  reminder_time?: string | null
 }
 
 type Props = {
@@ -20,6 +27,7 @@ type Props = {
   todayLogged: boolean
   todayCompleted: boolean | null
   userId: string | null
+  calendarConnected?: boolean
   onLog: (completed: boolean) => Promise<void>
 }
 
@@ -38,9 +46,15 @@ function categoryStyle(cat: string | null) {
   return CATEGORY_STYLES[cat ?? ''] ?? CATEGORY_STYLES['Something else']
 }
 
-export default function HabitCard({ habit, streak, last7, todayLogged, todayCompleted, userId, onLog }: Props) {
+export default function HabitCard({ habit, streak, last7, todayLogged, todayCompleted, userId, calendarConnected, onLog }: Props) {
   const [logging, setLogging] = useState(false)
   const [toast, setToast] = useState<string | null>(null)
+
+  // Reminder sheet state
+  const [showReminder, setShowReminder] = useState(false)
+  const [reminderEnabled, setReminderEnabled] = useState(habit.reminder_enabled ?? true)
+  const [reminderMinutes, setReminderMinutes] = useState(habit.reminder_minutes_before ?? null)
+  const [reminderTime, setReminderTime] = useState(habit.reminder_time ?? null)
 
   // Survey state
   const [showSurvey, setShowSurvey] = useState(false)
@@ -101,7 +115,7 @@ export default function HabitCard({ habit, streak, last7, todayLogged, todayComp
   async function handleSurveySubmit() {
     if (!completionLevel || surveySubmitting) return
     setSurveySubmitting(true)
-    const today = new Date().toISOString().split('T')[0]
+    const today = localDateStr()
 
     try {
       // Save survey response
@@ -152,12 +166,21 @@ export default function HabitCard({ habit, streak, last7, todayLogged, todayComp
         {/* Left color bar */}
         <div className={`absolute left-0 top-0 bottom-0 w-1 ${style.bar}`} />
 
-        {/* Identity banner */}
+        {/* Identity banner + bell */}
         {habit.identity_label && (
-          <div className={`pl-7 pr-6 py-2.5 ${style.bannerBg}`}>
+          <div className={`flex items-center justify-between pl-7 pr-3 py-2.5 ${style.bannerBg}`}>
             <p className={`text-xs font-semibold uppercase tracking-wide ${style.bannerText}`}>
               {habit.identity_label}
             </p>
+            {calendarConnected && habit.google_calendar_event_id && (
+              <button
+                onClick={() => setShowReminder(true)}
+                className={`rounded-full p-1.5 transition-colors ${reminderEnabled ? 'text-primary' : 'text-muted-foreground/40'}`}
+                title="Reminder settings"
+              >
+                <Bell size={13} />
+              </button>
+            )}
           </div>
         )}
 
@@ -292,6 +315,23 @@ export default function HabitCard({ habit, streak, last7, todayLogged, todayComp
             </button>
           </div>
         </div>
+      )}
+
+      {/* Reminder sheet */}
+      {showReminder && (
+        <ReminderSheet
+          habitId={habit.id}
+          habitName={habit.habit_name}
+          initialEnabled={reminderEnabled}
+          initialMinutesBefore={reminderMinutes}
+          initialReminderTime={reminderTime}
+          onClose={() => setShowReminder(false)}
+          onSaved={({ reminder_enabled, reminder_minutes_before, reminder_time }) => {
+            setReminderEnabled(reminder_enabled)
+            setReminderMinutes(reminder_minutes_before)
+            setReminderTime(reminder_time)
+          }}
+        />
       )}
     </>
   )

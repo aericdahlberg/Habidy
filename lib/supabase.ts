@@ -117,4 +117,16 @@ export type Database = {
     completion_level: 'full' | 'partial' | 'none' | null
     created_at: string
   }
+  habit_adjustments: {
+    id: string
+    user_id: string
+    habit_id: string | null
+    adjustment_type: 'increase_difficulty' | 'decrease_difficulty' | 'shift_time' | 'change_cue' | 'flag_for_discussion'
+    current_value: Record<string, unknown>
+    proposed_value: Record<string, unknown>
+    status: 'pending' | 'accepted' | 'rejected' | 'dismissed'
+    user_note: string | null
+    created_at: string
+    resolved_at: string | null
+  }
 }

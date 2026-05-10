@@ -11,6 +11,8 @@ import {
   type QuickHabitData,
 } from '@/lib/agents/architect'
 import { adminClient, getProfileContext } from '@/lib/supabase'
+import { getValidAccessToken } from '@/lib/google-auth'
+import { getCalendarEvents, formatEventsForContext } from '@/lib/google-calendar'
 import { logAgentSession } from '@/lib/logger'
 import { traceable } from '@/lib/langsmith'
 import {
@@ -128,6 +130,7 @@ export async function POST(req: NextRequest) {
       timeAvailable: (userRow?.time_available as string) ?? '',
       crystalBallSummary: '',
       profileContext: null,
+      calendarContext: null,
     }
 
     if (userId) {
@@ -151,6 +154,20 @@ export async function POST(req: NextRequest) {
         ctx.profileContext = await getProfileContext(userId)
       } catch {
         // Non-fatal
+      }
+    }
+
+    if (userId) {
+      try {
+        const accessToken = await getValidAccessToken(userId)
+        if (accessToken) {
+          const now = new Date()
+          const twoWeeksOut = new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000)
+          const events = await getCalendarEvents(accessToken, now, twoWeeksOut)
+          ctx.calendarContext = formatEventsForContext(events)
+        }
+      } catch {
+        // Non-fatal — architect works without calendar context
       }
     }
 

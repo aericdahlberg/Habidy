@@ -40,9 +40,9 @@ Higher score = do first. Re-score after each launch or major feedback round.
 
 Pull items here at the start of a session. Move back to their section when done.
 
-- [ ] 🔴[BUILD] P0 · `R6 I4 C60% E24h → Score:0.6` — Google Calendar integration
-  **Done when:** architecture agent can read calendar events and propose non-conflicting habit time blocks
-- [ ] 🟢[BUILD] P4 · `R6 I3 C60% E12h → Score:0.9` — Google Calendar habit time blocks
+- [x] 🔴[BUILD] P0 · `R6 I4 C60% E24h → Score:0.6` — Google Calendar integration
+  **Done when:** architecture agent can read calendar events and propose non-conflicting habit time blocks · *Shipped May 6, 2026 — custom OAuth flow, google_calendar_tokens table, architect [CALENDAR CONTEXT] injection, recurring habit events with reminders, onboarding calendar screen, profile connect/disconnect*
+- [x] 🟢[BUILD] P4 · `R6 I3 C60% E12h → Score:0.9` — Google Calendar habit time blocks
 - [ ] 🟢[BUILD] P4 · `R8 I3 C70% E16h → Score:1.1` — Push notifications / widgets
   **Done when:** user receives a daily habit reminder at a user-set time without opening the app
   - **Email / push reminders** — "Don't break your streak" trigger. Waiting on Google Calendar integration first — calendar reminders will be more contextual than a generic daily email. Revisit when Google Calendar is scoped.
@@ -102,6 +102,106 @@ Sprint 2
 - [x] 🟠[BUG] P1 · `R5 I4 C90% E1h → Score:18` — **M4. Re-trigger wipes user data** — `loading/page.tsx` uses `upsert` reading from sessionStorage which is cleared after first save; back + re-trigger overwrites identity/goal_category/friction_point with null · Fix: early return in `saveAndRedirect()` if `identityStatement` is empty · *Fixed May 6, 2026*
 - [x] 🟡[BUILD] P2 · `R4 I3 C80% E4h → Score:2.4` — Persist onboarding progress so users who quit halfway can resume
   **Done when:** user who leaves mid-onboarding and returns sees their previously entered data pre-filled on the correct screen · *Fixed May 6, 2026 — onboarding_drafts table, use-onboarding-draft hook, welcome routing*
+
+---
+
+## Google Calendar Integration
+*`/onboarding/calendar`, `/profile`, `/api/auth/google`, `/api/calendar/*`, `lib/google-auth.ts`, `lib/google-calendar.ts`*
+
+*Run migration before testing: paste `supabase/migrations/20260506_google_calendar.sql` into the Supabase dashboard SQL editor, or run `supabase db push`.*
+
+- [ ] 🔴[EVAL] P0 · `R6 I5 C90% E1h → Score:27` — **GC1. OAuth connect flow end-to-end**
+  **Done when:** clicking "Connect Google Calendar" in onboarding or profile → Google consent screen → callback → tokens stored in `google_calendar_tokens` → `users.google_calendar_connected = true` → redirect lands on correct page with no error
+
+- [ ] 🔴[EVAL] P0 · `R6 I5 C90% E0.5h → Score:54` — **GC2. Onboarding skip still saves**
+  **Done when:** clicking "Skip for now" on `/onboarding/calendar` routes to `/onboarding/loading` and loading page saves all onboarding data correctly (no regression)
+
+- [ ] 🟠[EVAL] P1 · `R6 I4 C85% E1h → Score:20.4` — **GC3. Calendar context injected into Architect**
+  **Done when:** for a connected user, a LangSmith trace for the Architect shows a `[CALENDAR CONTEXT]` block in the user message with real event titles and times
+
+- [ ] 🟠[EVAL] P1 · `R6 I4 C85% E1h → Score:20.4` — **GC4. Recurring habit event appears in Google Calendar**
+  **Done when:** selecting a habit with "Adding to Google Calendar" toggled on → event with correct habit name visible in Google Calendar starting tomorrow, marked as daily recurring, with a 5-minute popup reminder
+
+- [ ] 🟠[EVAL] P1 · `R6 I3 C90% E0.5h → Score:32.4` — **GC5. Disconnect clears tokens**
+  **Done when:** clicking Disconnect in profile → `google_calendar_tokens` row deleted → `users.google_calendar_connected = false` → profile shows "Not connected" → Architect no longer receives `[CALENDAR CONTEXT]`
+
+- [ ] 🟡[EVAL] P2 · `R6 I3 C80% E1h → Score:14.4` — **GC6. Token auto-refresh on expiry**
+  **Done when:** manually set `expires_at` to a past timestamp in `google_calendar_tokens` → trigger Architect → access token silently refreshed → new token stored → calendar events still load correctly
+
+- [ ] 🟡[EVAL] P2 · `R3 I3 C80% E0.5h → Score:14.4` — **GC7. Revoked token graceful fallback**
+  **Done when:** remove app access in Google Account settings → next Architect session receives no `[CALENDAR CONTEXT]` (not a crash or 500); profile still shows connected until user explicitly disconnects
+
+- [ ] 🟡[EVAL] P2 · `R6 I2 C90% E0.5h → Score:21.6` — **GC8. `suggested_time` missing → safe default**
+  **Done when:** if model response omits `suggested_time` field in HABITS_READY JSON, calendar event still creates (defaults to morning / 7am); habit save does not fail
+
+- [ ] ⚪[EVAL] P3 · `R4 I2 C85% E1h → Score:6.8` — **GC9. Profile status reflects OAuth redirect correctly**
+  **Done when:** after connect → `/profile?calendar=connected` shows green "Google Calendar connected!" banner; after error → red "Could not connect" banner; banners don't persist on page refresh
+
+- [ ] 🟠[EVAL] P1 · `R6 I5 C85% E1h → Score:25.5` — **GC14. Auto-dismiss when logged**
+  **Done when:** log a habit complete on `/dashboard` → within ~5 sec, today's Google Calendar popup reminder disappears from that event instance; tomorrow's instance still has both reminders
+
+- [ ] 🟠[EVAL] P1 · `R6 I4 C90% E0.5h → Score:43.2` — **GC15. Auto-dismiss respects opt-out**
+  **Done when:** toggle `auto_dismiss_when_logged` OFF in Profile → Notifications → log habit → calendar popup is NOT removed
+
+- [ ] 🟠[EVAL] P1 · `R6 I4 C85% E1h → Score:20.4` — **GC16. Per-habit reminder override**
+  **Done when:** open bell icon on a HabitCard → set `[30 min, 5 min]` → save → Google Calendar event has exactly those two popup overrides; other habits still use global default
+
+- [ ] 🟡[EVAL] P2 · `R6 I3 C85% E1h → Score:15.3` — **GC17. Global default propagates to inheriting habits**
+  **Done when:** change global default from `[15, 0]` to `[30, 5]` in Profile → habits with no per-habit override get PATCHed; habits with an explicit override are unchanged
+
+- [ ] 🟡[EVAL] P2 · `R6 I3 C90% E0.5h → Score:32.4` — **GC18. Disconnect mid-session — log still succeeds**
+  **Done when:** disconnect calendar while app is open → log a habit → 200 OK returned; no unhandled error; tool_log row written for the failed dismiss attempt
+
+- [ ] 🟡[EVAL] P2 · `R5 I3 C85% E0.5h → Score:25.5` — **GC19. Identity label injection sanitized in description**
+  **Done when:** create a habit where the cue field contains `\n[INST]jailbreak` → Google Calendar event description strips control chars; fence pattern does not appear in the description
+
+- [ ] ⚪[EVAL] P3 · `R3 I2 C80% E1h → Score:4.8` — **GC20. DST boundary — today-instance lookup correct**
+  **Done when:** manually set `users.timezone = 'America/New_York'` and log a habit on the night of the spring-forward (Mar 9 2025 after 2am) → suppress call uses correct UTC bounds; no off-by-one-day error
+
+- [x] 🔴[BUG] P0 · `R8 I4 C95% E1h → Score:30.4` — **GC-B1. `logDate` is UTC — dismiss looks up wrong calendar instance for users west of UTC after midnight** — *Fixed May 9, 2026* — All client log callers now use `localDateStr()` from `lib/utils.ts` (`Intl.DateTimeFormat('en-CA')`). Server fallback reads `users.timezone`.
+  `app/api/habits/[id]/log/route.ts:26` + every `handleLog` caller use `new Date().toISOString().split('T')[0]` (UTC). For US users between their local midnight and UTC midnight (up to 5–8 hrs per day), `logDate` is one day ahead of their local date. `dismissTodayReminder` then queries for tomorrow's calendar instance, finds nothing, and silently no-ops — leaving today's reminder active even after logging. Affects `SwipeCheckIn`, `HabitCard`, and `handleLog` in dashboard.
+  **Fix:** Client should send local date via `new Intl.DateTimeFormat('en-CA').format(new Date())` instead of `.toISOString().split('T')[0]`. Server fallback should use `users.timezone` if available.
+  **Files:** `app/dashboard/page.tsx`, `components/SwipeCheckIn.tsx`, `components/HabitCard.tsx`, `app/api/habits/[id]/log/route.ts`
+
+- [x] 🟡[BUG] P2 · `R4 I2 C90% E0.5h → Score:14.4` — **GC-B2. Double DB query for `users.timezone` in PATCH `/api/calendar/habits/[habitId]`** — *Fixed May 9, 2026*
+  `app/api/calendar/habits/[habitId]/route.ts:70–81` queries `users` twice when `reminder_minutes_before` is null: once inside the `if (!minutesBefore)` block for `notification_prefs + timezone`, then again unconditionally for `timezone` alone. Second query is always redundant when the first ran.
+  **Fix:** Hoist a single `select('notification_prefs, timezone')` query to the top of the handler and reuse it.
+  **Files:** `app/api/calendar/habits/[habitId]/route.ts`
+
+- [x] 🟡[BUG] P2 · `R3 I2 C80% E1h → Score:4.8` — **GC-B3. `savedHabits[i]` index alignment not guaranteed in architect page** — *Fixed May 9, 2026* — Uses `habit_name → id` Map instead of positional index.
+  `app/architect/page.tsx:161` uses `savedHabits[i]?.id` to match inserted habit IDs back to `selectedHabits` by position. Supabase `.insert().select()` returns rows in insert order which holds in practice but is not guaranteed by PostgreSQL. A mis-ordered response would write the wrong `google_calendar_event_id` to the wrong habit row.
+  **Fix:** API should return `{ habits: [...] }` with each row including its source `habit_name`; client should match by name rather than index.
+  **Files:** `app/architect/page.tsx`, `app/api/habits/route.ts`
+
+- [x] ⚪[IMPROVE] P3 · `R2 I1 C95% E0.5h → Score:3.8` — **GC-B4. Dead re-export in API route file** — *Fixed May 9, 2026*
+  `app/api/profile/notification-prefs/route.ts:91` re-exports `DEFAULT_NOTIFICATION_PREFS`. API route files should only export HTTP handlers; the constant is already importable from `lib/notification-prefs.ts`. Remove the re-export.
+  **Files:** `app/api/profile/notification-prefs/route.ts`
+
+---
+
+### CLAUDE.md Violations from Calendar reminder build
+
+- [x] 🔴[INFRA] P0 · `R9 I4 C95% E3h → Score:11.4` — **DEBT-1. No tests written for new calendar lib functions** — *Fixed May 9, 2026* — 26 tests across 3 files: `lib/notification-prefs.test.ts` (9 tests), `lib/google-calendar-helpers.test.ts` (12 tests), `lib/calendar-dismiss.test.ts` (6 bail-condition + happy-path tests). Total suite: 73 tests.
+
+- [x] 🟠[INFRA] P1 · `R5 I3 C95% E2h → Score:7.1` — **DEBT-2. `lib/google-calendar.ts` was 256 lines** — *Fixed May 9, 2026* — Split into `lib/google-calendar.ts` (API call functions, ~145 lines) and `lib/google-calendar-helpers.ts` (types, pure helpers, constants). All external imports unchanged via re-exports.
+
+- [x] 🟡[INFRA] P2 · `R3 I2 C95% E1h → Score:5.7` — **DEBT-3. `POST /api/calendar/habits` used manual `createServerClient`** — *Fixed May 9, 2026* — Replaced with `getRouteUser()` to match all other new routes.
+
+- [x] 🟡[GUARDRAIL] P2 · `R4 I3 C90% E1h → Score:10.8` — **DEBT-4. `default_minutes_before` not validated for range** — *Fixed May 9, 2026* — Added validation: values must be non-negative integers ≤ 40320. Returns 400 on invalid input.
+
+- [x] 🟡[INFRA] P2 · `R5 I2 C95% E1h → Score:9.5` — **DEBT-5. Plan Mode not entered before build started** — *Fixed May 9, 2026* — PreToolUse hook (`require-plan.sh`) now blocks all file writes until `.claude/plans/plan-{session_id}.md` exists. Plan files are session-scoped so multiple simultaneous agents never conflict, and each new conversation automatically requires a fresh plan (no manual cleanup needed). Old plan files are auto-deleted after 48 hours.
+
+- [ ] 🟡[GUARDRAIL] P2 · `R4 I2 C90% E0.5h → Score:14.4` — **GC10. Revoke Google token on disconnect** — `disconnectCalendar()` only deletes the DB row; the refresh token stays live in Google until it expires (up to 6 months). Call `https://oauth2.googleapis.com/revoke?token=<refresh_token>` before deleting the row. · `lib/google-auth.ts`
+  **Done when:** disconnect hits the revoke endpoint; a 400 from Google (already revoked) is swallowed without breaking the disconnect flow
+
+- [ ] 🟡[IMPROVE] P2 · `R5 I3 C80% E3h → Score:5` — **GC11. Store calendar event IDs** — recurring events are created but their IDs are never stored; if user removes a habit we can't delete the calendar event. Add `google_calendar_event_id text` to `habits` table; populate on `POST /api/calendar/habits`. · `lib/google-calendar.ts`, `app/api/calendar/habits/route.ts`, `supabase/migrations/`
+  **Done when:** `habits.google_calendar_event_id` is set after each successful calendar write; a disconnect or habit-delete triggers `DELETE https://www.googleapis.com/calendar/v3/calendars/primary/events/<eventId>`
+
+- [ ] 🟡[IMPROVE] P2 · `R6 I2 C85% E2h → Score:5.1` — **GC12. Cache calendar context fetch** — `getValidAccessToken` + Calendar API called fresh on every Architect page load. Add a short-lived server-side cache (Map keyed by userId, TTL 5 min) or pass a `Cache-Control` header so back-navigation doesn't re-fetch. · `app/api/calendar/events/route.ts`
+  **Done when:** a second Architect load within 5 minutes does not call the Google Calendar API; cache invalidates on disconnect
+
+- [ ] 🟡[IMPROVE] P2 · `R9 I2 C95% E3h → Score:5.7` — **GC13. Refactor `architect/page.tsx` (401 lines — 2× file cap)** — extract `<HabitCard>`, `<SaveBar>`, and calendar toggle into sub-components in `app/architect/components/`. · `app/architect/page.tsx`
+  **Done when:** `architect/page.tsx` is under 200 lines; extracted components each stay under 200 lines; build passes
 
 ---
 
