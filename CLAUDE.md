@@ -243,7 +243,37 @@ hooks/
 Always run from the project root: `cd habidy`.
 Claude Code reads `CLAUDE.md` automatically — no need to re-explain the project each session.
 
-**Starting a session:**
+### Sprint workflow (primary)
+
+Each Monday, `SPRINT.md` is populated from the Notion board with the week's cards, ordered by RICE score.
+Run `/sprint` at the start of any session — it reads `SPRINT.md`, picks the next unchecked card, and handles it end-to-end.
+
+```
+/sprint          ← start or resume the sprint, one card at a time
+/end-session     ← commit progress + write PROGRESS.md before /clear
+```
+
+**How agents are dispatched:**
+
+| Card Type | Agent | Model |
+|-----------|-------|-------|
+| BUG / GUARDRAIL | bug-fixer | Sonnet (fast execution) |
+| BUILD / INFRA / IMPROVE | planner → you approve → execute | Opus (deep reasoning) |
+| EVAL | eval-runner | Sonnet (run + report) |
+
+**Hooks that fire automatically:**
+- `post-edit.sh` — type-check + lint after every file write (all cards)
+- `require-plan.sh` — blocks writes until a plan file exists (BUILD/INFRA/IMPROVE only)
+
+**Context window strategy:** each `/sprint` call handles ONE card. Plan files are written to
+`.claude/plans/plan-[card-slug].md` and eval results to `.claude/eval-results/` so context
+resets cleanly between cards. After 2–3 cards, run `/end-session` + `/clear`.
+
+**Use plain prompts for:** quick one-off questions, reading code, understanding a file.
+Use `/sprint` for: any work that touches source files.
+
+### Ad-hoc session (when not on a sprint card)
+
 ```
 "Today I'm building [feature]. The spec is in docs/[FILE].md.
 Follow the existing patterns in [related file].

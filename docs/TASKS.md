@@ -444,10 +444,28 @@ Psychological deep-dive. Asks pointed questions about blockers, misalignments, e
 - [ ] 🔵[EVAL] P3 · `R6 I3 C80% E1h → Score:14.4` — Proactive entry: neglected-habit notification (3+ days no logs) → opens Habit Breaker for that habit
   *(Dependency: Google Calendar / reminders infra)*
 
-### Agent: Navigator (Daily Planner)
+ ## Agent: Navigator (Project Manager Mode)
+
 - [ ] 🟢[BUILD] P4 · `R4 I3 C60% E16h → Score:0.45` — Notion API integration
 - [ ] 🟢[BUILD] P4 · `R6 I4 C60% E16h → Score:0.9` — Energy-aware scheduling logic
   **Done when:** navigator recommends habit timing based on logged energy patterns
+
+  ## New Agent?: Project Planner
+- [ ] 🟠[BUILD] P1 · `R9 I5 C80% E6h → Score:6` — **Navigator system prompt: project intake**
+  **Done when:** agent accepts a project name + deadline + rough scope; asks ≤3 clarifying questions; outputs a structured task list with time estimates
+
+- [ ] 🟠[BUILD] P1 · `R9 I5 C80% E6h → Score:6` — **Notion integration: create project page + task list**
+  **Done when:** Navigator outputs are written to a Notion page via Notion API; tasks appear as a database with status, due date, and time estimate fields
+
+- [ ] 🟠[BUILD] P1 · `R9 I5 C80% E8h → Score:4.5` — **Google Calendar: schedule task blocks from Notion**
+  **Done when:** each task in the Notion DB gets a corresponding Google Calendar time block assigned within the project deadline window; conflicts with existing events are avoided using calendar read access
+
+- [ ] 🟠[BUILD] P1 · `R9 I4 C75% E4h → Score:6.75` — **Daily digest: "here's what's on your plate today"**
+  **Done when:** dashboard or Navigator page shows today's assigned tasks pulled from Google Calendar + Notion; user can mark complete from this view
+
+- [ ] 🟡[EVAL] P2 · `R8 I4 C85% E1h → Score:27.2` — Navigator: vague project → ask clarifying questions, never schedule without scope
+- [ ] 🟡[EVAL] P2 · `R8 I4 C85% E1h → Score:27.2` — Navigator: deadline conflict → surface it, don't silently overbook
+- [ ] 🟡[GUARDRAIL] P2 · `R7 I3 C90% E1h → Score:18.9` — Sanitize project/task names before Notion API injection
 
 ---
 
@@ -503,3 +521,6 @@ Psychological deep-dive. Asks pointed questions about blockers, misalignments, e
 - **Ghost auth users** — Should we detect users who have `auth.users` but no `public.users` row and re-prompt them on next login?
 - **Habit cap long-term** — Currently max 2 active habits from Architect. When does this increase? What's the unlock model beyond the 7-day streak?
 - **Demographic data use** — Profile collects DOB, gender, address. How and when does this influence agent behavior? No spec yet.
+
+
+

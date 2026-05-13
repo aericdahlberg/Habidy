@@ -25,6 +25,18 @@
           }
         ]
       }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/validate-session.sh",
+            "timeout": 15,
+            "statusMessage": "Session check..."
+          }
+        ]
+      }
     ]
   }
 }
