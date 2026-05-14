@@ -35,7 +35,7 @@ Confirm all onboarding data (identity, goal_category, friction_point) is saved i
 Confirm no null overwrites
 
 
-[ ] GC15: Auto-dismiss respects opt-out
+[x] GC15: Auto-dismiss respects opt-out
 Type: EVAL · Priority: P1 🟠 · Effort: 0.5h · RICE: 43.2
 Done when: toggle auto_dismiss_when_logged OFF in Profile → Notifications → log a habit → Google Calendar popup is NOT removed
 Steps:
