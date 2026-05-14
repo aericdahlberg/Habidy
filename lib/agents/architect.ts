@@ -159,7 +159,7 @@ export type ProposedHabit = HabitSuggestion & {
 }
 
 export function extractHabitsFromMessage(message: string): HabitSuggestion[] | null {
-  const match = message.match(/HABITS_READY:(\[[\s\S]+?\])\s*$/)
+  const match = message.match(/HABITS_READY:(\[[\s\S]+?\])/)
   if (!match) return null
   try {
     const parsed = JSON.parse(match[1])

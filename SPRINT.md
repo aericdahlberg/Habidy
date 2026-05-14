@@ -13,7 +13,7 @@ Blocked? Note it inline and pull the next card.
 End of sprint: flip all done cards to Done in Notion, then regenerate this file.
 
 
-[ ] Fix HABITS_READY regex (H1)
+[x] Fix HABITS_READY regex (H1)
 Type: BUG · Priority: P0 🔴 · Effort: 0.5h · RICE: 85.5
 Notion: https://www.notion.so/35fbab41-93a5-81...
 Done when: Architect never returns 500 on habit generation; regex handles trailing text after ]
