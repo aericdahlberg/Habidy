@@ -24,7 +24,7 @@ Change to: /HABITS_READY:(\[[\s\S]+?\])/
 Confirm: no 500 when model adds text after the closing ]
 
 
-[ ] GC2: Onboarding skip still saves
+[x] GC2: Onboarding skip still saves
 Type: EVAL · Priority: P0 🔴 · Effort: 0.5h · RICE: 54
 Done when: clicking "Skip for now" on /onboarding/calendar routes to /onboarding/loading and loading page saves all onboarding data correctly — no regression
 Steps:
