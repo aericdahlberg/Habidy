@@ -1,0 +1,24 @@
+{
+  "date": "2026-05-14",
+  "card": "Eval: Architect vague identity → follow-up, never HABITS_READY",
+  "model": "claude-haiku-4-5-20251001",
+  "passed": 3,
+  "total": 3,
+  "cases": [
+    {
+      "identity": "I want to be better",
+      "pass": true,
+      "reason": "Asked clarifying question, no HABITS_READY"
+    },
+    {
+      "identity": "I want to improve myself",
+      "pass": true,
+      "reason": "Asked clarifying question, no HABITS_READY"
+    },
+    {
+      "identity": "I just want to be a good person and do well in life",
+      "pass": true,
+      "reason": "Asked clarifying question, no HABITS_READY"
+    }
+  ]
+}

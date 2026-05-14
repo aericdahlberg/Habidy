@@ -46,7 +46,7 @@ Log a habit from the dashboard
 Confirm the Google Calendar popup reminder is still present (not dismissed)
 
 
-[ ] Eval: Architect vague identity → follow-up, never HABITS_READY
+[x] Eval: Architect vague identity → follow-up, never HABITS_READY
 Type: EVAL · Priority: P1 🟠 · Effort: 1h · RICE: 42.8
 Done when: vague identity input (e.g. "I want to be better") triggers a clarifying question — Architect never advances to HABITS_READY
 Steps:
