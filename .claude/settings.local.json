@@ -7,7 +7,11 @@
       "WebFetch(domain:supabase.com)",
       "WebFetch(domain:github.com)",
       "WebFetch(domain:raw.githubusercontent.com)",
-      "Bash(npm test:*)"
+      "Bash(npm test:*)",
+      "Bash(npx ts-node *)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(npx tsx *)"
     ]
   },
   "enableAllProjectMcpServers": true,
