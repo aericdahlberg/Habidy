@@ -1,0 +1,24 @@
+{
+  "date": "2026-05-28",
+  "card": "Eval: Architect no cue → don't advance to HABITS_READY",
+  "model": "claude-haiku-4-5-20251001",
+  "passed": 3,
+  "total": 3,
+  "cases": [
+    {
+      "label": "Clear identity, no routine anchor — single turn",
+      "pass": true,
+      "reason": "No HABITS_READY across 1 turns, cue not yet established"
+    },
+    {
+      "label": "Clear identity, vague effort — single turn",
+      "pass": true,
+      "reason": "No HABITS_READY across 1 turns, cue not yet established"
+    },
+    {
+      "label": "Clear identity + 2 turns, still no cue given",
+      "pass": true,
+      "reason": "No HABITS_READY across 2 turns, cue not yet established"
+    }
+  ]
+}

@@ -6,8 +6,8 @@
 import * as fs from 'fs'
 import * as path from 'path'
 import Anthropic from '@anthropic-ai/sdk'
-import { buildArchitectSystemPrompt, buildArchitectUserContext } from '../lib/agents/architect.ts'
-import type { ArchitectContext } from '../lib/agents/architect.ts'
+import { buildArchitectSystemPrompt, buildArchitectUserContext } from '../lib/agents/architect'
+import type { ArchitectContext } from '../lib/agents/architect'
 
 function loadEnv() {
   for (const name of ['.env.local', '.env']) {

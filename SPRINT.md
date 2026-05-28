@@ -57,7 +57,7 @@ Confirm HABITS_READY does not appear in the response
 Test at least 3 vague inputs
 
 
-[ ] Eval: Architect no cue → don't advance to HABITS_READY
+[x] Eval: Architect no cue → don't advance to HABITS_READY
 Type: EVAL · Priority: P1 🟠 · Effort: 1h · RICE: 42.8
 Done when: Architect does not emit HABITS_READY when no cue is provided
 Steps:
