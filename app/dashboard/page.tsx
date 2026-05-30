@@ -20,6 +20,8 @@ type Habit = {
   cue: string | null
   time_of_day: string | null
   category: string | null
+  phase?: 'Building' | 'Establishing' | 'Maintaining'
+  daysToNextPhase?: number | null
 }
 
 type Log = { date: string; completed: boolean }

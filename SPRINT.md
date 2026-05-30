@@ -80,7 +80,7 @@ Confirm profile UI shows "Not connected"
 Run an Architect session and confirm no [CALENDAR CONTEXT] in LangSmith trace
 
 
-[ ] Habit phase progression — API + HabitCard component
+[x] Habit phase progression — API + HabitCard component
 Type: BUILD · Priority: P1 🟠 · Effort: 4h · RICE: 32.4 (evals) / 16.2 (build)
 Done when: every habit shows current phase label + progress bar + "X days to [next phase]" on HabitCard; phases update from streak; streak reset returns to Building
 Steps:

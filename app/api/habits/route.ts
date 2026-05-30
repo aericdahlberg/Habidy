@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { adminClient } from '@/lib/supabase'
 import { getRouteUser } from '@/lib/supabaseServer'
+import { calculateStreak, getPhase } from '@/lib/streak'
 
 export async function GET(req: NextRequest) {
   const user = await getRouteUser()
@@ -22,7 +23,30 @@ export async function GET(req: NextRequest) {
     console.error('[GET /api/habits]', error)
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
-  return NextResponse.json({ habits: data })
+
+  const since = new Date()
+  since.setDate(since.getDate() - 60)
+  const sinceStr = since.toISOString().split('T')[0]
+
+  const { data: logs } = await adminClient()
+    .from('habit_logs')
+    .select('habit_id, date, completed')
+    .in('habit_id', (data ?? []).map((h) => h.id))
+    .gte('date', sinceStr)
+    .order('date', { ascending: false })
+
+  const byHabit: Record<string, { date: string; completed: boolean }[]> = {}
+  for (const log of logs ?? []) {
+    if (!byHabit[log.habit_id]) byHabit[log.habit_id] = []
+    byHabit[log.habit_id].push({ date: log.date as string, completed: log.completed as boolean })
+  }
+
+  const enriched = (data ?? []).map((h) => {
+    const streak = calculateStreak(byHabit[h.id] ?? [])
+    return { ...h, ...getPhase(streak) }
+  })
+
+  return NextResponse.json({ habits: enriched })
 }
 
 export async function POST(req: NextRequest) {

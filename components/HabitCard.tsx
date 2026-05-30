@@ -3,9 +3,10 @@
 import { useState, useRef } from 'react'
 import { Bell } from 'lucide-react'
 import StreakDots from './StreakDots'
+import PhaseBar from './PhaseBar'
 import ReminderSheet from './ReminderSheet'
 import { localDateStr } from '@/lib/utils'
-import type { DayStatus } from '@/lib/streak'
+import type { DayStatus, HabitPhase } from '@/lib/streak'
 
 type Habit = {
   id: string
@@ -18,6 +19,8 @@ type Habit = {
   reminder_enabled?: boolean | null
   reminder_minutes_before?: number[] | null
   reminder_time?: string | null
+  phase?: HabitPhase['phase']
+  daysToNextPhase?: number | null
 }
 
 type Props = {
@@ -197,6 +200,15 @@ export default function HabitCard({ habit, streak, last7, todayLogged, todayComp
           <div className="mt-4">
             <StreakDots days={last7} streak={streak} />
           </div>
+
+          {/* Phase progress */}
+          {habit.phase && (
+            <PhaseBar
+              phase={habit.phase}
+              streak={streak}
+              daysToNextPhase={habit.daysToNextPhase ?? null}
+            />
+          )}
 
           {/* Swipe hint — only shown before today is logged */}
           {!todayLogged && (

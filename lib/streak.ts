@@ -8,6 +8,17 @@ export type DayStatus = {
   completed: boolean | null   // null = no log for that day
 }
 
+export type HabitPhase = {
+  phase: 'Building' | 'Establishing' | 'Maintaining'
+  daysToNextPhase: number | null
+}
+
+export function getPhase(streak: number): HabitPhase {
+  if (streak < 7)  return { phase: 'Building',     daysToNextPhase: 7 - streak }
+  if (streak < 21) return { phase: 'Establishing', daysToNextPhase: 21 - streak }
+  return             { phase: 'Maintaining',       daysToNextPhase: null }
+}
+
 export function calculateStreak(logs: HabitLog[]): number {
   if (!logs.length) return 0
 

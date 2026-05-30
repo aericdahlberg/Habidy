@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { adminClient } from '@/lib/supabase'
 import { getRouteUser } from '@/lib/supabaseServer'
-import { calculateStreak, getLast7Days } from '@/lib/streak'
+import { calculateStreak, getLast7Days, getPhase } from '@/lib/streak'
 
 export async function GET(
   req: NextRequest,
@@ -39,6 +39,7 @@ export async function GET(
   const logs = (data ?? []).map((l) => ({ date: l.date as string, completed: l.completed as boolean }))
   const streak = calculateStreak(logs)
   const last7 = getLast7Days(logs)
+  const { phase, daysToNextPhase } = getPhase(streak)
 
-  return NextResponse.json({ streak, last7 })
+  return NextResponse.json({ streak, last7, phase, daysToNextPhase })
 }
