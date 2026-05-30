@@ -68,12 +68,14 @@ google_calendar_event_id text                     -- set after POST /api/calenda
 reminder_enabled         boolean DEFAULT true     -- per-habit reminder on/off
 reminder_minutes_before  int[]                    -- e.g. {30,5}; null = inherit global default
 difficulty_level         int DEFAULT 1            -- 1–5; incremented by Habit Coach on increase_difficulty proposals
+last_rated_at            timestamptz              -- set when user submits weekly difficulty check-in
 is_active                boolean DEFAULT true
 created_at               timestamptz DEFAULT now()
 ```
 > Category color is applied via CATEGORY_STYLES in HabitCard.tsx and architect/page.tsx.
 > Migration: `supabase/migrations/20260507_reminder_prefs.sql`
 > `difficulty_level` added by `supabase/migrations/20260508_habit_coach.sql`
+> `last_rated_at` added by `supabase/migrations/20260530_difficulty_checkin.sql`
 
 ### `habit_logs`
 ```sql
@@ -84,6 +86,18 @@ date        text NOT NULL        -- ISO date string "YYYY-MM-DD"
 completed   boolean NOT NULL
 logged_at   timestamptz DEFAULT now()
 ```
+
+### `habit_difficulty_logs`
+```sql
+id                    uuid PRIMARY KEY DEFAULT gen_random_uuid()
+user_id               uuid REFERENCES users NOT NULL
+habit_id              uuid REFERENCES habits NOT NULL
+rating                text NOT NULL  -- 'too_easy' | 'just_right' | 'too_hard'
+difficulty_level_before int
+created_at            timestamptz NOT NULL DEFAULT now()
+```
+> Populated by POST /api/habits/[id]/difficulty-feedback at each weekly check-in.
+> Migration: `supabase/migrations/20260530_difficulty_checkin.sql`
 
 ### `habit_survey_responses`
 ```sql
@@ -215,9 +229,10 @@ POST  /api/mode
 ```
 GET   /api/habits?user_id=           -- get user's active habits (is_active = true)
 POST  /api/habits                    -- create habit(s) — accepts array
-POST  /api/habits/[id]/log           -- log completion or skip for today (upserts)
-GET   /api/habits/[id]/streak        -- returns current streak + last 7 days
-POST  /api/habits/survey             -- save habit_survey_responses row
+POST  /api/habits/[id]/log                      -- log completion or skip for today (upserts)
+GET   /api/habits/[id]/streak                   -- returns current streak + last 7 days + phase
+POST  /api/habits/[id]/difficulty-feedback      -- weekly check-in rating; returns { action: 'level_up' | 'keep' | 'scale_down' }
+POST  /api/habits/survey                        -- save habit_survey_responses row
 ```
 
 ### Agents

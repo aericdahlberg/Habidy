@@ -7,10 +7,12 @@ import { CheckCircle2, Circle, Plus, Sparkles } from 'lucide-react'
 import BottomNav from '@/components/BottomNav'
 import SwipeCheckIn from '@/components/SwipeCheckIn'
 import WeeklyReviewCard from '@/components/WeeklyReviewCard'
+import WeeklyCheckIn from '@/components/WeeklyCheckIn'
 import { cn, localDateStr } from '@/lib/utils'
 import { supabase } from '@/lib/supabase'
 import { calculateStreak, getLast7Days } from '@/lib/streak'
 import type { DayStatus } from '@/lib/streak'
+import { shouldShowDifficultyCheckIn } from '@/lib/difficulty-trigger'
 import { useTimezoneSync } from '@/hooks/use-timezone-sync'
 
 type Habit = {
@@ -22,6 +24,7 @@ type Habit = {
   category: string | null
   phase?: 'Building' | 'Establishing' | 'Maintaining'
   daysToNextPhase?: number | null
+  last_rated_at?: string | null
 }
 
 type Log = { date: string; completed: boolean }
@@ -88,6 +91,7 @@ export default function DashboardPage() {
   const [showSwipe, setShowSwipe] = useState(false)
   const [checked, setChecked] = useState<Set<string>>(new Set())
   const [lastCoachReviewAt, setLastCoachReviewAt] = useState<string | null>(null)
+  const [checkInHabitId, setCheckInHabitId] = useState<string | null>(null)
 
   const quote = useMemo(() => QUOTES[Math.floor(Math.random() * QUOTES.length)], [])
   const firstName = userName.split(' ')[0] || ''
@@ -160,6 +164,12 @@ export default function DashboardPage() {
         }
         setHabitStates(states)
 
+        // Detect weekly difficulty check-in — first qualifying habit wins
+        const checkInHabit = activeHabits.find((h) =>
+          shouldShowDifficultyCheckIn(states[h.id]?.streak ?? 0, h.last_rated_at ?? null)
+        )
+        if (checkInHabit) setCheckInHabitId(checkInHabit.id)
+
         // Show swipe check-in if habits exist and haven't checked in today
         if (activeHabits.length > 0 && needsCheckIn(user.id)) {
           setShowSwipe(true)
@@ -194,6 +204,16 @@ export default function DashboardPage() {
     } catch {
       // Offline fallback
     }
+  }
+
+  function handleLevelUp(data: { habitId: string; habitName: string; habitCue: string | null; identityLabel: string | null }) {
+    setCheckInHabitId(null)
+    sessionStorage.setItem('habidy_level_up_habit', JSON.stringify({
+      habitName: data.habitName,
+      cue: data.habitCue,
+      identityLabel: data.identityLabel,
+    }))
+    router.push('/architect')
   }
 
   const handleSwipeComplete = useCallback(
@@ -460,6 +480,24 @@ export default function DashboardPage() {
       )}
 
       <BottomNav />
+
+      {/* Weekly difficulty check-in modal */}
+      {checkInHabitId && (() => {
+        const habit = habits.find((h) => h.id === checkInHabitId)
+        const state = habitStates[checkInHabitId]
+        if (!habit || !state) return null
+        return (
+          <WeeklyCheckIn
+            habitId={habit.id}
+            habitName={habit.habit_name}
+            habitCue={habit.cue}
+            identityLabel={habit.identity_label}
+            streak={state.streak}
+            onDismiss={() => setCheckInHabitId(null)}
+            onLevelUp={handleLevelUp}
+          />
+        )
+      })()}
     </div>
   )
 }

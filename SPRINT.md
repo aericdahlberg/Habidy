@@ -97,7 +97,7 @@ Streak reset → phase returns to "Building"
 Run phase calculation evals: calc correct, countdown accurate, streak reset works
 
 
-[ ] Weekly difficulty check-in — component + trigger + API
+[x] Weekly difficulty check-in — component + trigger + API
 Type: BUILD · Priority: P1 🟠 · Effort: 8h · RICE: 9.56
 Status: In Progress
 Done when: at 7-day multiple, user sees "Too Easy / Just Right / Too Hard" prompt for that habit; "Too Easy" seeds Architect with current habit + level-up prompt; response saved to habit_difficulty_logs

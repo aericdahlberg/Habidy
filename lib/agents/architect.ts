@@ -40,6 +40,8 @@ export type QuickHabitData = {
   habit: string
   cue: string
   location: string
+  mode?: 'level_up'
+  identityLabel?: string
 }
 
 // sanitize a context field at read time — no pattern flagging (write-time is the gate).
@@ -96,8 +98,10 @@ ${HABITS_READY_RULES}`
 }
 
 // Static auto-generate prompt. hasQuickHabit and hasCrystalBallNotes are server-determined.
-export function buildAutoGenerateSystemPrompt(opts: { hasQuickHabit: boolean; hasCrystalBallNotes: boolean }): string {
-  const quickNote = opts.hasQuickHabit
+export function buildAutoGenerateSystemPrompt(opts: { hasQuickHabit: boolean; hasCrystalBallNotes: boolean; isLevelUp?: boolean }): string {
+  const quickNote = opts.isLevelUp
+    ? 'The user wants to level up an existing habit. The [USER REQUEST] block contains the current habit name, cue, and identity label. Generate 5 progressively harder variations of that habit, preserving the identity label and cue structure but increasing duration, intensity, or complexity.'
+    : opts.hasQuickHabit
     ? 'The user has a specific habit request in [USER CONTEXT] under the user_request key. Generate 5 variations of that habit ranging from very easy to ambitious.'
     : 'No specific habit requested — design 5 distinct habits tied directly to the user\'s identity_goal.'
 
@@ -130,6 +134,23 @@ export function buildAutoGenerateUserMessage(
 
   const habit = sanitizeUserInput(quickHabitData.habit, 'quick_habit', userId, { maxLength: 200, flagPatterns: true })
   const cue = sanitizeUserInput(quickHabitData.cue, 'quick_cue', userId, { maxLength: 200, flagPatterns: true })
+
+  if (quickHabitData.mode === 'level_up') {
+    const identityLabel = quickHabitData.identityLabel
+      ? sanitizeUserInput(quickHabitData.identityLabel, 'identity_label', userId, { maxLength: 200, flagPatterns: true })
+      : ''
+    return `${contextBlock}
+
+[USER REQUEST]
+mode: level_up
+existing_habit: ${escapeFenceMarkers(habit)}
+existing_cue: ${escapeFenceMarkers(cue)}
+identity_label: ${escapeFenceMarkers(identityLabel)}
+[/USER REQUEST]
+
+Generate 5 progressively harder variations of this habit now.`
+  }
+
   const location = sanitizeUserInput(quickHabitData.location, 'quick_location', userId, { maxLength: 200, flagPatterns: true })
 
   return `${contextBlock}

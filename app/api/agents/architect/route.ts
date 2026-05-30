@@ -198,6 +198,7 @@ export async function POST(req: NextRequest) {
       const systemPrompt = buildAutoGenerateSystemPrompt({
         hasQuickHabit: !!quickHabitData,
         hasCrystalBallNotes: !!ctx.crystalBallSummary,
+        isLevelUp: quickHabitData?.mode === 'level_up',
       })
 
       const reply = await agentGuard({

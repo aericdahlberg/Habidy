@@ -84,6 +84,38 @@ export default function ArchitectPage() {
         setAddToCalendar(true)
       }
 
+      // Level-up flow: pre-seed Architect with existing habit to generate harder variations
+      const levelUpRaw = sessionStorage.getItem('habidy_level_up_habit')
+      if (levelUpRaw) {
+        sessionStorage.removeItem('habidy_level_up_habit')
+        try {
+          const { habitName, cue, identityLabel } = JSON.parse(levelUpRaw) as {
+            habitName: string; cue: string | null; identityLabel: string | null
+          }
+          setState('loading')
+          const res = await fetch('/api/agents/architect', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              userId: user.id,
+              messages: [],
+              autoGenerate: true,
+              mode: 'level_up',
+              quickHabitData: { habit: habitName, cue: cue ?? '', location: '', mode: 'level_up', identityLabel: identityLabel ?? '' },
+            }),
+          })
+          const data = await res.json() as { habitsReady?: HabitSuggestionResponse[]; message?: string; error?: string }
+          if (res.ok && data.habitsReady?.length) {
+            setHabits(data.habitsReady)
+            setIntroText(data.message ?? '')
+            setState('ready')
+            return
+          }
+        } catch {
+          // Fall through to standard auto-generate
+        }
+      }
+
       // Check for pre-generated habits from quick-habit flow
       const pregenRaw = sessionStorage.getItem('habidy_pregenerated_habits')
       if (pregenRaw) {
