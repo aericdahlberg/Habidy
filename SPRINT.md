@@ -68,7 +68,7 @@ Confirm HABITS_READY does not fire without a cue present
 Test at least 2 no-cue inputs
 
 
-[ ] GC5: Disconnect clears tokens
+[x] GC5: Disconnect clears tokens
 Type: EVAL · Priority: P1 🟠 · Effort: 0.5h · RICE: 32.4
 Done when: disconnect → google_calendar_tokens row deleted → users.google_calendar_connected = false → profile shows "Not connected" → Architect no longer receives [CALENDAR CONTEXT]
 Steps:
