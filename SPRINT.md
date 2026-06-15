@@ -134,7 +134,7 @@ level_up: "Too Easy" → Architect generates harder variation with same identity
 scale_down: "Too Hard" → Architect generates easier variation
 
 
-[ ] Dashboard evals — SwipeCheckIn, streak, progress
+[x] Dashboard evals — SwipeCheckIn, streak, progress
 Type: EVAL · Priority: P1 🟠 · Effort: 2h · RICE: 25.65
 Done when: SwipeCheckIn only appears on first visit of the day; completing same habit twice doesn't double-count; streak correct across midnight boundary; progress bar accurate
 Steps:
