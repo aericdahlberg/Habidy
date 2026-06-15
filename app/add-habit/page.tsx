@@ -46,6 +46,17 @@ export default function AddHabitPage() {
         if (!user) return
         setUserId(user.id)
 
+        // Gate: require at least one habit with 7-day streak
+        const habitsRes = await fetch('/api/habits', { cache: 'no-store' })
+        if (habitsRes.ok) {
+          const habitsJson = await habitsRes.json() as { habits?: Array<{ phase?: string }> }
+          const hasStreak = (habitsJson.habits ?? []).some((h) => h.phase !== 'Building')
+          if (!hasStreak) {
+            router.replace('/dashboard')
+            return
+          }
+        }
+
         const { data } = await supabase
           .from('proposed_habits')
           .select('id, habit_data')

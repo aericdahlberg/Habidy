@@ -145,7 +145,7 @@ streak_midnight: test streak calculation across midnight boundary (use a test ac
 progress_bar: complete N of M habits — verify bar shows correct percentage
 
 
-[ ] Profile + add-habit gate evals
+[x] Profile + add-habit gate evals
 Type: EVAL · Priority: P1 🟠 · Effort: 2h · RICE: 25.2
 Done when: sign out clears session and redirects to /login; /add-habit only accessible at 7-day streak; shows remaining proposed habits from Architect
 Steps:
