@@ -122,7 +122,7 @@ Check Supabase: users.google_calendar_connected = true
 Confirm redirect lands on correct page with no error
 
 
-[ ] Weekly difficulty check-in evals
+[x] Weekly difficulty check-in evals
 Type: EVAL · Priority: P1 🟠 · Effort: 2h · RICE: 27.2
 Run after the WeeklyCheckIn BUILD card above is done.
 Done when: check-in fires at correct interval; doesn't fire twice; Just Right saves to difficulty_logs with no redirect; Architect generates correct variation with difficulty context
